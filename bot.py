@@ -261,6 +261,12 @@ def send_to_telegram(image_path, caption):
             try:
                 result = response.json()
             except ValueError as error:
+                if response.status_code == 429 or response.status_code >= 500:
+                    last_error = RuntimeError(f"پاسخ موقت HTTP از تلگرام: {response.status_code}")
+                    if attempt < TELEGRAM_MAX_ATTEMPTS:
+                        time.sleep(TELEGRAM_RETRY_SECONDS * attempt)
+                        continue
+                    break
                 response.raise_for_status()
                 raise RuntimeError("پاسخ تلگرام JSON معتبر نیست") from error
 
