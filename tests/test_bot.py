@@ -55,6 +55,15 @@ class RenderingTests(unittest.TestCase):
         caption = bot.make_caption(0.041234, None)
         self.assertIn("نامشخص", caption)
 
+    def test_caption_includes_informal_market_comment(self):
+        caption = bot.make_caption(0.041234, -4.0, [0.042, 0.040])
+        self.assertIn("تحلیل خودمونی", caption)
+        self.assertIn("فروشنده‌ها", caption)
+
+    def test_market_comment_handles_missing_change(self):
+        comment = bot.make_market_comment(None, [])
+        self.assertIn("حکم قطعی ندیم", comment)
+
 
 if __name__ == "__main__":
     unittest.main()
