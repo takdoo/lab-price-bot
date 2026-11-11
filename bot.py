@@ -171,56 +171,55 @@ def get_iran_time():
 
 
 def make_market_comment(change, history):
-    """Short informal commentary based only on observed market data."""
-    intraday_change = None
-    if isinstance(history, list) and len(history) >= 2:
-        first, last = history[0], history[-1]
-        if first > 0 and math.isfinite(first) and math.isfinite(last):
-            intraday_change = ((last - first) / first) * 100
+    """Informal pressure/trend read from price movement, not actual buyer counts."""
+    recent_change = None
+    if isinstance(history, list) and len(history) >= 4:
+        try:
+            earlier = float(history[max(0, int(len(history) * 0.75))])
+            latest = float(history[-1])
+            if earlier > 0 and math.isfinite(earlier) and math.isfinite(latest):
+                recent_change = ((latest - earlier) / earlier) * 100
+        except (TypeError, ValueError, IndexError):
+            recent_change = None
 
-    if change is None:
-        return "فعلاً داده تغییر ۲۴ ساعته کامل نیست؛ با این اطلاعات کم درباره جهت بازار حکم قطعی ندیم."
-    if intraday_change is not None and change < 0 and intraday_change > 0.5:
-        return "با اینکه جمع ۲۴ ساعت هنوز منفیه، توی حرکت اخیر یه نفس رو به بالا دیده می‌شه؛ ببینیم این برگشت جون می‌گیره یا نه."
-    if intraday_change is not None and change > 0 and intraday_change < -0.5:
-        return "با اینکه جمع ۲۴ ساعت مثبته، حرکت اخیر یه کم شل شده؛ سبزی امروز تضمین ادامه رشد نیست."
-    if change >= 3:
-        return "فعلاً خریدارها دست بالاتر رو دارن؛ ولی بعد از این رشد، با هیجان دنبال قیمت ندویید."
+    if change is None or recent_change is None:
+        return "فعلاً از داده‌های موجود نمی‌شه فهمید کفه خرید سنگین‌تره یا فروش؛ برای پیش‌بینی هم عجله نکنیم."
+    if recent_change >= 1.0 and change > 0:
+        return "فعلاً فشار خرید بیشتره و حرکت کوتاه‌مدت رو به بالاست؛ شانس ادامه رشد هست، ولی تثبیت قیمت مهمه."
+    if recent_change <= -1.0 and change < 0:
+        return "فعلاً فشار فروش بیشتره و حرکت کوتاه‌مدت رو به پایینه؛ احتمال ادامه ضعف هست، مگر اینکه خریدارها وارد بشن."
+    if recent_change >= 1.0 and change <= 0:
+        return "توی چند ساعت اخیر خریدارها یه تکونی دادن، ولی جمع ۲۴ ساعت هنوز مثبته نشده؛ فعلاً برگشت قطعی نیست."
+    if recent_change <= -1.0 and change >= 0:
+        return "با اینکه جمع ۲۴ ساعت مثبته، توی حرکت اخیر فروشنده‌ها فعال‌تر شدن؛ مراقب ضعیف شدن روند باشیم."
     if change > 0:
-        return "امروز LAB یه مقدار سبزه، ولی هنوز برای گفتنِ برگشت روند زوده؛ باید ادامه حرکت رو دید."
-    if change <= -3:
-        return "فعلاً فروشنده‌ها فشار بیشتری میارن و بازار ضعیفه؛ نه از ترس عجولانه بفروشیم، نه بی‌تأیید دنبال خرید بریم."
+        return "بازار یه مقدار مثبته، ولی زور خریدارها هنوز اون‌قدر واضح نیست که بگیم رشد ادامه‌داره."
     if change < 0:
-        return "فعلاً LAB کمی زیر فشاره؛ این افت به‌تنهایی نه معنی ریزش سنگین می‌ده نه نشونه قطعی برگشت."
-    return "فعلاً بازار تقریباً بی‌حرکته؛ صبر کنیم تا جهت بعدی واضح‌تر بشه."
+        return "بازار یه مقدار منفیه، ولی فشار خرید و فروش نزدیک به همه؛ فعلاً جهت بعدی معلوم نیست."
+    return "فعلاً بازار تقریباً بی‌حرکته؛ صبر کنیم تا کفه خرید یا فروش مشخص‌تر بشه."
 
 
 def make_caption(price, change, history=None):
     date_text, time_text = get_iran_time()
     if change is None:
-        status, change_text = "⚪ تغییر ۲۴ ساعته در دسترس نیست", "نامشخص"
+        status, change_text = "⚪ وضعیت بازار: نامشخص", "نامشخص"
     elif change > 0:
-        status, change_text = "🟢 بازار امروز مثبته", f"+{change:.2f}%"
+        status, change_text = "🟢 بازار ۲۴ ساعته مثبته", f"+{change:.2f}%"
     elif change < 0:
-        status, change_text = "🔴 بازار امروز منفیه", f"{change:.2f}%"
+        status, change_text = "🔴 بازار ۲۴ ساعته منفیه", f"{change:.2f}%"
     else:
         status, change_text = "⚪ بازار بدون تغییره", "0.00%"
 
     comment = make_market_comment(change, history)
     return (
-        "🧪 <b>گزارش لحظه‌ای قیمت LAB</b>\\n"
-        "━━━━━━━━━━━━━━\\n"
+        "🧪 <b>گزارش لحظه‌ای LAB</b>\\n"
         f"💰 <b>قیمت: {chr(36)}{price:.5f}</b>\\n"
-        f"📊 <b>تغییر ۲۴ ساعته: {change_text}</b>\\n"
-        f"{status}\\n"
-        "━━━━━━━━━━━━━━\\n"
-        f"🗣️ <b>تحلیل خودمونی:</b> {comment}\\n"
-        "━━━━━━━━━━━━━━\\n"
-        f"📅 <b>تاریخ: {date_text}</b>\\n"
-        f"🕒 <b>ساعت ایران: {time_text}</b>\\n"
-        "🔄 <b>بروزرسانی خودکار هر ۵ دقیقه</b>\\n\\n"
-        "👨‍💻 <b>طراح و سازنده: علی حامدی</b>\\n"
-        "👥 <b>گروه تلگرامی: @lab_chats</b>"
+        f"📊 تغییر ۲۴ ساعته: <b>{change_text}</b>  |  {status}\\n\\n"
+        "🗣️ <b>حرفِ بازار به زبون خودمونی:</b>\\n"
+        f"{comment}\\n\\n"
+        f"📅 {date_text}  |  🕒 ساعت ایران {time_text}\\n"
+        "🔄 بروزرسانی خودکار هر ۵ دقیقه\\n"
+        "👨‍💻 طراح: علی حامدی  |  👥 @lab_chats"
     )
 
 
