@@ -201,6 +201,8 @@ def send_to_telegram(image_path, caption):
         raise ValueError("توکن ربات در GitHub Secrets تنظیم نشده است")
     if not CHAT_ID:
         raise ValueError("CHAT_ID خالی است")
+    if not MESSAGE_ID:
+        raise ValueError("MESSAGE_ID در GitHub Secrets تنظیم نشده؛ برای جلوگیری از ارسال پیام تکراری، شناسه پیام ثابت را ثبت کنید")
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/"
     with open(image_path, "rb") as photo:
