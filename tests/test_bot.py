@@ -55,14 +55,17 @@ class RenderingTests(unittest.TestCase):
         caption = bot.make_caption(0.041234, None)
         self.assertIn("نامشخص", caption)
 
-    def test_caption_includes_informal_market_comment(self):
-        caption = bot.make_caption(0.041234, -4.0, [0.042, 0.040])
-        self.assertIn("تحلیل خودمونی", caption)
-        self.assertIn("فروشنده‌ها", caption)
+    def test_caption_includes_separate_informal_market_comment(self):
+        caption = bot.make_caption(0.041234, -4.0, [0.042, 0.041, 0.040, 0.038])
+        self.assertIn("حرفِ بازار به زبون خودمونی", caption)
+        self.assertIn("فشار فروش", caption)
+        self.assertNotIn("━━━━━━━━", caption)
+        self.assertNotIn("\\n", caption)
+        self.assertIn("\n", caption)
 
-    def test_market_comment_handles_missing_change(self):
-        comment = bot.make_market_comment(None, [])
-        self.assertIn("حکم قطعی ندیم", comment)
+    def test_market_comment_handles_insufficient_data(self):
+        comment = bot.make_market_comment(-1.0, [0.04, 0.039])
+        self.assertIn("داده‌های موجود", comment)
 
 
 if __name__ == "__main__":
