@@ -12,7 +12,7 @@ CHAT_ID = os.environ.get("CHAT_ID", "@lab_chats")
 MESSAGE_ID = os.environ.get("MESSAGE_ID", "")
 
 API = "https://api.coingecko.com/api/v3/simple/price"
-BASE_IMAGE = "lab_card.png"
+BASE_IMAGE = "lab-price-bot.png"
 OUTPUT_IMAGE = "lab_live.jpg"
 
 
