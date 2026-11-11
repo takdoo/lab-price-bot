@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import math
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,8 @@ PRICE_API = "https://api.coingecko.com/api/v3/simple/price?ids=lab&vs_currencies
 HISTORY_API = "https://api.coingecko.com/api/v3/coins/lab/market_chart?vs_currency=usd&days=1"
 MAX_PRICE_AGE_SECONDS = 15 * 60
 REQUEST_TIMEOUT = (10, 25)
+TELEGRAM_MAX_ATTEMPTS = 4
+TELEGRAM_RETRY_SECONDS = 5
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -229,45 +232,68 @@ def send_to_telegram(image_path, caption):
     if not CHAT_ID:
         raise ValueError("CHAT_ID خالی است")
     if not MESSAGE_ID:
-        raise ValueError("MESSAGE_ID در GitHub Secrets تنظیم نشده؛ برای جلوگیری از ارسال پیام تکراری، شناسه پیام ثابت را ثبت کنید")
+        raise ValueError("MESSAGE_ID در GitHub Secrets تنظیم نشده؛ شناسه پیام ثابت را ثبت کنید")
+    if not MESSAGE_ID.isdigit():
+        raise ValueError("MESSAGE_ID باید فقط شامل عدد باشد")
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/"
-    with open(image_path, "rb") as photo:
-        if MESSAGE_ID:
-            media = {
-                "type": "photo", "media": "attach://photo",
-                "caption": caption, "parse_mode": "HTML"
-            }
-            response = HTTP.post(
-                url + "editMessageMedia",
-                data={
-                    "chat_id": CHAT_ID, "message_id": MESSAGE_ID,
-                    "media": json.dumps(media, ensure_ascii=False)
-                },
-                files={"photo": photo}, timeout=REQUEST_TIMEOUT
-            )
-        else:
-            response = HTTP.post(
-                url + "sendPhoto",
-                data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
-                files={"photo": photo}, timeout=REQUEST_TIMEOUT
-            )
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageMedia"
+    media = {
+        "type": "photo", "media": "attach://photo",
+        "caption": caption, "parse_mode": "HTML"
+    }
+    last_error = None
 
-    response.raise_for_status()
-    try:
-        result = response.json()
-    except ValueError as error:
-        raise RuntimeError("پاسخ تلگرام JSON معتبر نیست") from error
-    if not result.get("ok"):
-        raise RuntimeError("خطای تلگرام: " + str(result.get("description", "نامشخص")))
+    for attempt in range(1, TELEGRAM_MAX_ATTEMPTS + 1):
+        try:
+            # Reopen the stream on each attempt; requests consumes file handles.
+            with open(image_path, "rb") as photo:
+                response = HTTP.post(
+                    url,
+                    data={
+                        "chat_id": CHAT_ID,
+                        "message_id": int(MESSAGE_ID),
+                        "media": json.dumps(media, ensure_ascii=False)
+                    },
+                    files={"photo": photo},
+                    timeout=REQUEST_TIMEOUT
+                )
 
-    message_id = (result.get("result") or {}).get("message_id")
-    if not MESSAGE_ID and message_id:
-        logging.warning(
-            "پیام جدید ساخته شد؛ برای جلوگیری از پیام تکراری، MESSAGE_ID=%s را در GitHub Secrets ثبت کنید",
-            message_id
-        )
-    logging.info("پیام LAB با موفقیت در تلگرام ثبت/ویرایش شد")
+            try:
+                result = response.json()
+            except ValueError as error:
+                response.raise_for_status()
+                raise RuntimeError("پاسخ تلگرام JSON معتبر نیست") from error
+
+            if result.get("ok"):
+                logging.info("پیام ثابت LAB با موفقیت ویرایش شد؛ message_id=%s", MESSAGE_ID)
+                return
+
+            description = str(result.get("description", "خطای نامشخص تلگرام"))
+            if "message is not modified" in description.lower():
+                logging.info("پیام تلگرام از قبل همین محتوا را دارد؛ خطای واقعی نیست")
+                return
+
+            error_code = int(result.get("error_code", response.status_code))
+            last_error = RuntimeError(f"خطای تلگرام {error_code}: {description}")
+            if error_code == 429 or error_code >= 500:
+                retry_after = (result.get("parameters") or {}).get("retry_after", TELEGRAM_RETRY_SECONDS)
+                if attempt < TELEGRAM_MAX_ATTEMPTS:
+                    delay = min(max(int(retry_after), 1), 60)
+                    logging.warning("خطای موقت تلگرام؛ تلاش %s از %s پس از %s ثانیه", attempt + 1, TELEGRAM_MAX_ATTEMPTS, delay)
+                    time.sleep(delay)
+                    continue
+            raise last_error
+
+        except (requests.Timeout, requests.ConnectionError) as error:
+            last_error = error
+            if attempt < TELEGRAM_MAX_ATTEMPTS:
+                delay = TELEGRAM_RETRY_SECONDS * attempt
+                logging.warning("ارتباط با تلگرام قطع شد؛ تلاش مجدد در %s ثانیه (%s/%s)", delay, attempt + 1, TELEGRAM_MAX_ATTEMPTS)
+                time.sleep(delay)
+                continue
+            break
+
+    raise RuntimeError(f"ویرایش پیام تلگرام پس از {TELEGRAM_MAX_ATTEMPTS} تلاش ناموفق بود: {last_error}")
 
 
 def main():
