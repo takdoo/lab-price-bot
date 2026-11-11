@@ -136,7 +136,7 @@ def create_image(price, change, history):
     width, height = image.size
     white, green, red, muted = (255, 255, 255), (35, 230, 130), (255, 75, 90), (180, 190, 200)
 
-    price_text = f"\${price:.5f}"
+    price_text = f"{chr(36)}{price:.5f}"
     price_font = fit_font(draw, price_text, int(width * 0.88), max(42, int(width * 0.105)), 20)
     draw.text(
         (width // 2, int(height * 0.48)), price_text, font=price_font,
@@ -184,7 +184,7 @@ def make_caption(price, change):
     return (
         "🧪 <b>گزارش لحظه‌ای قیمت LAB</b>\n"
         "━━━━━━━━━━━━━━\n"
-        f"💰 <b>قیمت: \${price:.5f}</b>\n"
+        f"💰 <b>قیمت: {chr(36)}{price:.5f}</b>\n"
         f"📊 <b>تغییر ۲۴ ساعته: {change_text}</b>\n"
         f"{status}\n"
         "━━━━━━━━━━━━━━\n"
