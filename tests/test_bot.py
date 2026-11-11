@@ -27,6 +27,15 @@ class MarketDataTests(unittest.TestCase):
             bot.get_market_data()
 
     @patch.object(bot.HTTP, "get")
+    def test_market_data_rejects_zero_price(self, mocked_get):
+        response = Mock()
+        response.json.return_value = {"lab": {"usd": 0}}
+        response.raise_for_status.return_value = None
+        mocked_get.return_value = response
+        with self.assertRaises(ValueError):
+            bot.get_market_data()
+
+    @patch.object(bot.HTTP, "get")
     def test_history_filters_invalid_values(self, mocked_get):
         response = Mock()
         response.json.return_value = {
@@ -66,6 +75,27 @@ class RenderingTests(unittest.TestCase):
     def test_market_comment_handles_insufficient_data(self):
         comment = bot.make_market_comment(-1.0, [0.04, 0.039])
         self.assertIn("داده‌های موجود", comment)
+
+
+class TelegramTests(unittest.TestCase):
+    @patch.object(bot, "MESSAGE_ID", "12345")
+    @patch.object(bot, "BOT_TOKEN", "test-token")
+    @patch.object(bot, "CHAT_ID", "@lab_chats")
+    @patch.object(bot.HTTP, "post")
+    def test_edit_message_succeeds(self, mocked_post):
+        response = Mock()
+        response.json.return_value = {"ok": True, "result": {"message_id": 12345}}
+        mocked_post.return_value = response
+        with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
+            bot.send_to_telegram("image.jpg", "caption")
+        self.assertEqual(mocked_post.call_count, 1)
+        self.assertIn("editMessageMedia", mocked_post.call_args.args[0])
+
+    @patch.object(bot, "MESSAGE_ID", "")
+    @patch.object(bot, "BOT_TOKEN", "test-token")
+    def test_missing_message_id_fails_before_network(self):
+        with self.assertRaisesRegex(ValueError, "MESSAGE_ID"):
+            bot.send_to_telegram("image.jpg", "caption")
 
 
 if __name__ == "__main__":
