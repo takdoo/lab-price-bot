@@ -28,7 +28,7 @@ def build_session():
     retry = Retry(
         total=3, connect=3, read=3, status=3, backoff_factor=1.0,
         status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=frozenset(["GET", "POST"]),
+        allowed_methods=frozenset(["GET"]),
         respect_retry_after_header=True,
     )
     session = requests.Session()
