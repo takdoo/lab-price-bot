@@ -5,15 +5,16 @@ import jdatetime
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ.get("CHAT_ID", "@lab_chats")
 MESSAGE_ID = os.environ.get("MESSAGE_ID", "")
 
-API = "https://api.coingecko.com/api/v3/simple/price"
 BASE_IMAGE = "lab-price-bot.png"
 OUTPUT_IMAGE = "lab_live.jpg"
+
+API = "https://api.coingecko.com/api/v3"
 
 
 def get_font(size):
@@ -21,63 +22,15 @@ def get_font(size):
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     ]
-
     for path in paths:
         if os.path.exists(path):
             return ImageFont.truetype(path, size)
-
     return ImageFont.load_default()
 
 
-def create_image(price_text):
-    image = Image.open(BASE_IMAGE).convert("RGBA")
-    width, height = image.size
-
-    # متن قیمت
-    font_size = int(width * 0.105)
-    font = get_font(font_size)
-
-    x = width // 2
-    y = int(height * 0.48)
-
-    # افکت نور سبز
-    glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    glow_draw = ImageDraw.Draw(glow)
-
-    glow_draw.text(
-        (x, y),
-        price_text,
-        font=font,
-        anchor="mm",
-        fill=(80, 255, 100, 180),
-        stroke_width=3
-    )
-
-    glow = glow.filter(ImageFilter.GaussianBlur(14))
-    image = Image.alpha_composite(image, glow)
-
-    # نوشته اصلی
-    draw = ImageDraw.Draw(image)
-    draw.text(
-        (x, y),
-        price_text,
-        font=font,
-        anchor="mm",
-        fill=(255, 255, 255, 255),
-        stroke_width=2,
-        stroke_fill=(15, 50, 25, 255)
-    )
-
-    image.convert("RGB").save(
-        OUTPUT_IMAGE,
-        quality=95,
-        optimize=True
-    )
-
-
-def main():
-    response = requests.get(
-        API,
+def get_market_data():
+    r = requests.get(
+        f"{API}/simple/price",
         params={
             "ids": "lab",
             "vs_currencies": "usd",
@@ -85,16 +38,168 @@ def main():
         },
         timeout=25
     )
-    response.raise_for_status()
-
-    lab = response.json()["lab"]
+    r.raise_for_status()
+    lab = r.json()["lab"]
 
     price = float(lab["usd"])
     change = float(lab["usd_24h_change"])
 
+    history = []
+    try:
+        h = requests.get(
+            f"{API}/coins/lab/market_chart",
+            params={"vs_currency": "usd", "days": "1"},
+            timeout=25
+        )
+        h.raise_for_status()
+        history = [
+            float(item[1])
+            for item in h.json().get("prices", [])
+        ]
+    except Exception as e:
+        print("Historical chart unavailable:", e)
+
+    return price, change, history
+
+
+def draw_chart(draw, points, color, x1, y1, x2, y2):
+    if len(points) < 2:
+        draw.text(
+            ((x1 + x2) // 2, (y1 + y2) // 2),
+            "CHART UNAVAILABLE",
+            font=get_font(13),
+            fill=(210, 210, 210),
+            anchor="mm"
+        )
+        return
+
+    low = min(points)
+    high = max(points)
+
+    if high == low:
+        high = low + 0.000001
+
+    coords = []
+    count = len(points)
+
+    for i, value in enumerate(points):
+        x = x1 + (x2 - x1) * i / (count - 1)
+        y = y2 - (value - low) / (high - low) * (y2 - y1)
+        coords.append((int(x), int(y)))
+
+    draw.line(coords, fill=color, width=4, joint="curve")
+
+
+def create_image(price_text, change, history):
+    image = Image.open(BASE_IMAGE).convert("RGBA")
+    width, height = image.size
+
+    draw = ImageDraw.Draw(image)
+
+    # قیمت اصلی
+    price_font = get_font(int(width * 0.105))
+    draw.text(
+        (width // 2, int(height * 0.48)),
+        price_text,
+        font=price_font,
+        anchor="mm",
+        fill=(255, 255, 255, 255),
+        stroke_width=2,
+        stroke_fill=(15, 50, 25, 255)
+    )
+
+    # محدوده دو پنل پایین
+    left_x1 = int(width * 0.10)
+    left_x2 = int(width * 0.47)
+    right_x1 = int(width * 0.53)
+    right_x2 = int(width * 0.90)
+
+    top = int(height * 0.70)
+
+    small_font = get_font(int(width * 0.027))
+    value_font = get_font(int(width * 0.050))
+
+    green = (70, 255, 120, 255)
+    red = (255, 75, 85, 255)
+    white = (245, 245, 245, 255)
+
+    # پنل سبز
+    draw.text(
+        ((left_x1 + left_x2) // 2, top),
+        "24H GAIN",
+        font=small_font,
+        fill=green if change > 0 else white,
+        anchor="mm"
+    )
+
+    if change > 0:
+        green_value = f"+{change:.2f}%"
+        draw.text(
+            ((left_x1 + left_x2) // 2, int(height * 0.77)),
+            green_value,
+            font=value_font,
+            fill=green,
+            anchor="mm"
+        )
+        draw_chart(
+            draw, history, green,
+            left_x1, int(height * 0.82),
+            left_x2, int(height * 0.90)
+        )
+    else:
+        draw.text(
+            ((left_x1 + left_x2) // 2, int(height * 0.79)),
+            "INACTIVE",
+            font=small_font,
+            fill=white,
+            anchor="mm"
+        )
+
+    # پنل قرمز
+    draw.text(
+        ((right_x1 + right_x2) // 2, top),
+        "24H LOSS",
+        font=small_font,
+        fill=red if change < 0 else white,
+        anchor="mm"
+    )
+
+    if change < 0:
+        red_value = f"{change:.2f}%"
+        draw.text(
+            ((right_x1 + right_x2) // 2, int(height *
+        0.77)),
+            red_value,
+            font=value_font,
+            fill=red,
+            anchor="mm"
+        )
+        draw_chart(
+            draw, history, red,
+            right_x1, int(height * 0.82),
+            right_x2, int(height * 0.90)
+        )
+    else:
+        draw.text(
+            ((right_x1 + right_x2) // 2, int(height * 0.79)),
+            "INACTIVE",
+            font=small_font,
+            fill=white,
+            anchor="mm"
+        )
+
+    image.convert("RGB").save(
+        OUTPUT_IMAGE,
+        quality=95
+    )
+
+
+def main():
+    price, change, history = get_market_data()
+
     price_text = f"${price:.6f}"
 
-    create_image(price_text)
+    create_image(price_text, change, history)
 
     now = datetime.now(ZoneInfo("Asia/Tehran"))
     jalali = jdatetime.datetime.fromgregorian(datetime=now)
@@ -118,14 +223,13 @@ def main():
         "━━━━━━━━━━━━━━━━━━\n"
         f"🕒 <b>زمان ایران:</b> "
         f"{jalali.strftime('%Y/%m/%d - %H:%M:%S')}\n"
-        "🔄 بروزرسانی خودکار هر ۵ دقیقه\n"
+        "🔄 بروزرسانی هر ۵ دقیقه\n"
         "━━━━━━━━━━━━━━━━━━\n"
         "👥 <b>گروه:</b> @lab_chats\n"
         "👨‍💻 <b>طراح و توسعه:</b> علی حامدی"
     )
 
     with open(OUTPUT_IMAGE, "rb") as photo:
-
         if MESSAGE_ID:
             media = {
                 "type": "photo",
@@ -144,7 +248,6 @@ def main():
                 files={"photo": photo},
                 timeout=40
             )
-
         else:
             result = requests.post(
                 f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
