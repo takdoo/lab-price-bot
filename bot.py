@@ -126,7 +126,7 @@ def create_image(price, change, history):
 
     # قیمت با ۵ رقم اعشار
     price_text = f"${price:.5f}"
-    price_font = get_font(max(28, int(width * 0.075)))
+    price_font = get_font(max(42, int(width * 0.105)))
 
     draw.text(
         (width // 2, int(height * 0.48)),
