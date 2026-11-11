@@ -99,7 +99,7 @@ def create_image(price_text, change, history):
     # قیمت اصلی
     price_font = get_font(int(width * 0.105))
     draw.text(
-        (width // 2, int(height * 0.48)),
+        (width // 2, int(height * 0.70)),
         price_text,
         font=price_font,
         anchor="mm",
