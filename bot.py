@@ -1,235 +1,268 @@
 import os
+import io
 import json
-import requests
-import jdatetime
-
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+import requests
+import jdatetime
 from PIL import Image, ImageDraw, ImageFont
 
-TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ.get("CHAT_ID", "@lab_chats")
-MESSAGE_ID = os.environ.get("MESSAGE_ID", "")
+
+# ---------------- تنظیمات ----------------
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID", "@lab_chats")
+MESSAGE_ID = os.getenv("MESSAGE_ID")
 
 BASE_IMAGE = "lab-price-bot.png"
 OUTPUT_IMAGE = "lab_live.jpg"
 
-API = "https://api.coingecko.com/api/v3"
+PRICE_API = (
+    "https://api.coingecko.com/api/v3/simple/price"
+    "?ids=lab&vs_currencies=usd&include_24hr_change=true"
+)
 
+HISTORY_API = (
+    "https://api.coingecko.com/api/v3/coins/lab/market_chart"
+    "?vs_currency=usd&days=1"
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
+# ---------------- فونت ----------------
 
 def get_font(size):
-    paths = [
+    font_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
     ]
-    for path in paths:
+
+    for path in font_paths:
         if os.path.exists(path):
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(path, size=size)
+
     return ImageFont.load_default()
 
 
+# ---------------- دریافت قیمت ----------------
+
 def get_market_data():
-    r = requests.get(
-        f"{API}/simple/price",
-        params={
-            "ids": "lab",
-            "vs_currencies": "usd",
-            "include_24hr_change": "true"
-        },
-        timeout=25
-    )
-    r.raise_for_status()
-    lab = r.json()["lab"]
+    response = requests.get(PRICE_API, timeout=20)
+    response.raise_for_status()
 
-    price = float(lab["usd"])
-    change = float(lab["usd_24h_change"])
+    data = response.json()
 
-    history = []
+    if "lab" not in data or "usd" not in data["lab"]:
+        raise ValueError("قیمت LAB در پاسخ دریافت نشد")
+
+    price = float(data["lab"]["usd"])
+    change = float(data["lab"].get("usd_24h_change", 0))
+
+    return price, change
+
+
+# ---------------- دریافت نمودار ۲۴ ساعته ----------------
+
+def get_history():
     try:
-        h = requests.get(
-            f"{API}/coins/lab/market_chart",
-            params={"vs_currency": "usd", "days": "1"},
-            timeout=25
-        )
-        h.raise_for_status()
-        history = [
-            float(item[1])
-            for item in h.json().get("prices", [])
-        ]
-    except Exception as e:
-        print("Historical chart unavailable:", e)
+        response = requests.get(HISTORY_API, timeout=20)
+        response.raise_for_status()
 
-    return price, change, history
+        data = response.json()
+        prices = data.get("prices", [])
+
+        return [float(item[1]) for item in prices]
+
+    except Exception as error:
+        logging.warning("دریافت نمودار تاریخی ناموفق بود: %s", error)
+        return []
 
 
-def draw_chart(draw, points, color, x1, y1, x2, y2):
-    if len(points) < 2:
-        draw.text(
-            ((x1 + x2) // 2, (y1 + y2) // 2),
-            "CHART UNAVAILABLE",
-            font=get_font(13),
-            fill=(210, 210, 210),
-            anchor="mm"
-        )
+# ---------------- رسم نمودار ----------------
+
+def draw_chart(draw, prices, x1, y1, x2, y2, color):
+    if len(prices) < 2:
         return
 
-    low = min(points)
-    high = max(points)
+    minimum = min(prices)
+    maximum = max(prices)
 
-    if high == low:
-        high = low + 0.000001
+    if maximum == minimum:
+        return
 
-    coords = []
-    count = len(points)
+    points = []
 
-    for i, value in enumerate(points):
-        x = x1 + (x2 - x1) * i / (count - 1)
-        y = y2 - (value - low) / (high - low) * (y2 - y1)
-        coords.append((int(x), int(y)))
+    for index, price in enumerate(prices):
+        x = x1 + (index / (len(prices) - 1)) * (x2 - x1)
+        y = y2 - ((price - minimum) / (maximum - minimum)) * (y2 - y1)
+        points.append((int(x), int(y)))
 
-    draw.line(coords, fill=color, width=4, joint="curve")
+    draw.line(points, fill=color, width=4, joint="curve")
 
 
-def create_image(price_text, change, history):
-    image = Image.open(BASE_IMAGE).convert("RGBA")
-    width, height = image.size
+# ---------------- ساخت عکس ----------------
 
+def create_image(price, change, history):
+    if not os.path.exists(BASE_IMAGE):
+        raise FileNotFoundError(
+            f"عکس اصلی پیدا نشد: {BASE_IMAGE}"
+        )
+
+    image = Image.open(BASE_IMAGE).convert("RGB")
     draw = ImageDraw.Draw(image)
 
-    # قیمت اصلی
-    price_font = get_font(int(width * 0.105))
+    width, height = image.size
+
+    white = (255, 255, 255)
+    green = (35, 230, 130)
+    red = (255, 75, 90)
+    muted = (180, 190, 200)
+
+    # قیمت با ۵ رقم اعشار
+    price_text = f"${price:.5f}"
+    price_font = get_font(max(28, int(width * 0.075)))
+
     draw.text(
-        (width // 2, int(height * 0.70)),
+        (width // 2, int(height * 0.48)),
         price_text,
         font=price_font,
+        fill=white,
         anchor="mm",
-        fill=(255, 255, 255, 255),
-        stroke_width=2,
-        stroke_fill=(15, 50, 25, 255)
+        stroke_width=1,
+        stroke_fill=(0, 0, 0)
     )
 
-    # محدوده دو پنل پایین
+    # محدوده پنل‌ها
     left_x1 = int(width * 0.10)
     left_x2 = int(width * 0.47)
+
     right_x1 = int(width * 0.53)
     right_x2 = int(width * 0.90)
 
-    top = int(height * 0.70)
+    value_font = get_font(max(18, int(width * 0.035)))
+    dash_font = get_font(max(20, int(width * 0.04)))
 
-    small_font = get_font(int(width * 0.027))
-    value_font = get_font(int(width * 0.050))
+    # پنل مثبت
+    if change >= 0:
+        green_text = f"+{change:.2f}%"
 
-    green = (70, 255, 120, 255)
-    red = (255, 75, 85, 255)
-    white = (245, 245, 245, 255)
-
-    # پنل سبز
-    draw.text(
-        ((left_x1 + left_x2) // 2, top),
-        "24H GAIN",
-        font=small_font,
-        fill=green if change > 0 else white,
-        anchor="mm"
-    )
-
-    if change > 0:
-        green_value = f"+{change:.2f}%"
         draw.text(
             ((left_x1 + left_x2) // 2, int(height * 0.77)),
-            green_value,
+            green_text,
             font=value_font,
             fill=green,
             anchor="mm"
         )
+
         draw_chart(
-            draw, history, green,
-            left_x1, int(height * 0.82),
-            left_x2, int(height * 0.90)
+            draw,
+            history,
+            left_x1,
+            int(height * 0.82),
+            left_x2,
+            int(height * 0.90),
+            green
         )
-    else:
+
         draw.text(
-            ((left_x1 + left_x2) // 2, int(height * 0.79)),
-            "INACTIVE",
-            font=small_font,
-            fill=white,
+            ((right_x1 + right_x2) // 2, int(height * 0.79)),
+            "—",
+        font=dash_font,
+            fill=muted,
             anchor="mm"
         )
 
-    # پنل قرمز
-    draw.text(
-        ((right_x1 + right_x2) // 2, top),
-        "24H LOSS",
-        font=small_font,
-        fill=red if change < 0 else white,
-        anchor="mm"
-    )
+    # پنل منفی
+    else:
+        red_text = f"{change:.2f}%"
 
-    if change < 0:
-        red_value = f"{change:.2f}%"
         draw.text(
-            ((right_x1 + right_x2) // 2, int(height *
-        0.77)),
-            red_value,
+            ((left_x1 + left_x2) // 2, int(height * 0.79)),
+            "—",
+            font=dash_font,
+            fill=muted,
+            anchor="mm"
+        )
+
+        draw.text(
+            ((right_x1 + right_x2) // 2, int(height * 0.80)),
+            red_text,
             font=value_font,
             fill=red,
             anchor="mm"
         )
+
         draw_chart(
-            draw, history, red,
-            right_x1, int(height * 0.82),
-            right_x2, int(height * 0.90)
-        )
-    else:
-        draw.text(
-            ((right_x1 + right_x2) // 2, int(height * 0.79)),
-            "INACTIVE",
-            font=small_font,
-            fill=white,
-            anchor="mm"
+            draw,
+            history,
+            right_x1,
+            int(height * 0.82),
+            right_x2,
+            int(height * 0.90),
+            red
         )
 
-    image.convert("RGB").save(
-        OUTPUT_IMAGE,
-        quality=95
-    )
+    image.save(OUTPUT_IMAGE, "JPEG", quality=95)
+    return OUTPUT_IMAGE
 
 
-def main():
-    price, change, history = get_market_data()
+# ---------------- تاریخ و ساعت ایران ----------------
 
-    price_text = f"${price:.6f}"
-
-    create_image(price_text, change, history)
-
+def get_iran_time():
     now = datetime.now(ZoneInfo("Asia/Tehran"))
     jalali = jdatetime.datetime.fromgregorian(datetime=now)
 
-    if change > 0:
-        movement = f"🟢 📈 <b>+{change:.2f}%</b>"
-        status = "🟢 بازار صعودی"
-    elif change < 0:
-        movement = f"🔴 📉 <b>{change:.2f}%</b>"
-        status = "🔴 بازار نزولی"
-    else:
-        movement = "🟡 ➖ <b>0.00%</b>"
-        status = "🟡 بدون تغییر محسوس"
+    date_text = jalali.strftime("%Y/%m/%d")
+    time_text = now.strftime("%H:%M:%S")
 
-    caption = (
-        "🧪 <b>LAB PREMIUM LIVE</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"💰 <b>قیمت LAB:</b> <code>{price_text}</code>\n"
-        f"📊 <b>تغییر ۲۴ ساعته:</b> {movement}\n"
-        f"📌 <b>وضعیت:</b> {status}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🕒 <b>زمان ایران:</b> "
-        f"{jalali.strftime('%Y/%m/%d - %H:%M:%S')}\n"
-        "🔄 بروزرسانی هر ۵ دقیقه\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "👥 <b>گروه:</b> @lab_chats\n"
-        "👨‍💻 <b>طراح و توسعه:</b> علی حامدی"
+    return date_text, time_text
+
+
+# ---------------- متن فارسی تلگرام ----------------
+
+def make_caption(price, change):
+    date_text, time_text = get_iran_time()
+
+    if change > 0:
+        status = "🟢 بازار امروز مثبته"
+        change_text = f"+{change:.2f}%"
+    elif change < 0:
+        status = "🔴 بازار امروز منفیه"
+        change_text = f"{change:.2f}%"
+    else:
+        status = "⚪ بازار بدون تغییره"
+        change_text = "0.00%"
+
+    return (
+        "🧪 <b>گزارش لحظه‌ای قیمت LAB</b>\n"
+        "━━━━━━━━━━━━━━\n"
+        f"💰 <b>قیمت: ${price:.5f}</b>\n"
+        f"📊 <b>تغییر ۲۴ ساعته: {change_text}</b>\n"
+        f"{status}\n"
+        "━━━━━━━━━━━━━━\n"
+        f"📅 <b>تاریخ: {date_text}</b>\n"
+        f"🕒 <b>ساعت ایران: {time_text}</b>\n"
+        "🔄 <b>بروزرسانی خودکار هر ۵ دقیقه</b>\n\n"
+        "👨‍💻 <b>طراح و سازنده: علی حامدی</b>\n"
+        "👥 <b>گروه تلگرامی: @lab_chats</b>"
     )
 
-    with open(OUTPUT_IMAGE, "rb") as photo:
+
+# ---------------- ارسال یا ویرایش پیام ----------------
+
+def send_to_telegram(image_path, caption):
+    if not BOT_TOKEN:
+        raise ValueError("توکن ربات در Secrets تنظیم نشده است")
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/"
+
+    with open(image_path, "rb") as photo:
         if MESSAGE_ID:
             media = {
                 "type": "photo",
@@ -238,38 +271,57 @@ def main():
                 "parse_mode": "HTML"
             }
 
-            result = requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/editMessageMedia",
+            response = requests.post(
+                url + "editMessageMedia",
                 data={
                     "chat_id": CHAT_ID,
                     "message_id": MESSAGE_ID,
                     "media": json.dumps(media)
                 },
                 files={"photo": photo},
-                timeout=40
+                timeout=30
             )
+
         else:
-            result = requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
+            response = requests.post(
+                url + "sendPhoto",
                 data={
                     "chat_id": CHAT_ID,
                     "caption": caption,
                     "parse_mode": "HTML"
                 },
                 files={"photo": photo},
-                timeout=40
+                timeout=30
             )
 
-    result.raise_for_status()
-    answer = result.json()
+    result = response.json()
 
-    if not answer.get("ok"):
-        raise RuntimeError(answer)
+    if not result.get("ok"):
+        raise RuntimeError(
+            "خطای تلگرام: " + str(result.get("description"))
+        )
 
-    if not MESSAGE_ID:
-        print("MESSAGE_ID =", answer["result"]["message_id"])
+    logging.info("پیام LAB با موفقیت بروزرسانی شد")
 
-    print("LAB IMAGE UPDATED:", price_text)
+
+# ---------------- اجرای اصلی ----------------
+
+def main():
+    logging.info("ربات قیمت LAB شروع به کار کرد")
+
+    price, change = get_market_data()
+    history = get_history()
+
+    image_path = create_image(price, change, history)
+    caption = make_caption(price, change)
+
+    send_to_telegram(image_path, caption)
+
+    logging.info(
+        "قیمت LAB: %.5f | تغییر ۲۴ ساعته: %.2f%%",
+        price,
+        change
+    )
 
 
 if __name__ == "__main__":
