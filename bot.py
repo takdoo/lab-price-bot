@@ -170,7 +170,32 @@ def get_iran_time():
     return jalali.strftime("%Y/%m/%d"), now.strftime("%H:%M:%S")
 
 
-def make_caption(price, change):
+def make_market_comment(change, history):
+    """Short informal commentary based only on observed market data."""
+    intraday_change = None
+    if isinstance(history, list) and len(history) >= 2:
+        first, last = history[0], history[-1]
+        if first > 0 and math.isfinite(first) and math.isfinite(last):
+            intraday_change = ((last - first) / first) * 100
+
+    if change is None:
+        return "فعلاً داده تغییر ۲۴ ساعته کامل نیست؛ با این اطلاعات کم درباره جهت بازار حکم قطعی ندیم."
+    if intraday_change is not None and change < 0 and intraday_change > 0.5:
+        return "با اینکه جمع ۲۴ ساعت هنوز منفیه، توی حرکت اخیر یه نفس رو به بالا دیده می‌شه؛ ببینیم این برگشت جون می‌گیره یا نه."
+    if intraday_change is not None and change > 0 and intraday_change < -0.5:
+        return "با اینکه جمع ۲۴ ساعت مثبته، حرکت اخیر یه کم شل شده؛ سبزی امروز تضمین ادامه رشد نیست."
+    if change >= 3:
+        return "فعلاً خریدارها دست بالاتر رو دارن؛ ولی بعد از این رشد، با هیجان دنبال قیمت ندویید."
+    if change > 0:
+        return "امروز LAB یه مقدار سبزه، ولی هنوز برای گفتنِ برگشت روند زوده؛ باید ادامه حرکت رو دید."
+    if change <= -3:
+        return "فعلاً فروشنده‌ها فشار بیشتری میارن و بازار ضعیفه؛ نه از ترس عجولانه بفروشیم، نه بی‌تأیید دنبال خرید بریم."
+    if change < 0:
+        return "فعلاً LAB کمی زیر فشاره؛ این افت به‌تنهایی نه معنی ریزش سنگین می‌ده نه نشونه قطعی برگشت."
+    return "فعلاً بازار تقریباً بی‌حرکته؛ صبر کنیم تا جهت بعدی واضح‌تر بشه."
+
+
+def make_caption(price, change, history=None):
     date_text, time_text = get_iran_time()
     if change is None:
         status, change_text = "⚪ تغییر ۲۴ ساعته در دسترس نیست", "نامشخص"
@@ -181,17 +206,20 @@ def make_caption(price, change):
     else:
         status, change_text = "⚪ بازار بدون تغییره", "0.00%"
 
+    comment = make_market_comment(change, history)
     return (
-        "🧪 <b>گزارش لحظه‌ای قیمت LAB</b>\n"
-        "━━━━━━━━━━━━━━\n"
-        f"💰 <b>قیمت: {chr(36)}{price:.5f}</b>\n"
-        f"📊 <b>تغییر ۲۴ ساعته: {change_text}</b>\n"
-        f"{status}\n"
-        "━━━━━━━━━━━━━━\n"
-        f"📅 <b>تاریخ: {date_text}</b>\n"
-        f"🕒 <b>ساعت ایران: {time_text}</b>\n"
-        "🔄 <b>بروزرسانی خودکار هر ۵ دقیقه</b>\n\n"
-        "👨‍💻 <b>طراح و سازنده: علی حامدی</b>\n"
+        "🧪 <b>گزارش لحظه‌ای قیمت LAB</b>\\n"
+        "━━━━━━━━━━━━━━\\n"
+        f"💰 <b>قیمت: {chr(36)}{price:.5f}</b>\\n"
+        f"📊 <b>تغییر ۲۴ ساعته: {change_text}</b>\\n"
+        f"{status}\\n"
+        "━━━━━━━━━━━━━━\\n"
+        f"🗣️ <b>تحلیل خودمونی:</b> {comment}\\n"
+        "━━━━━━━━━━━━━━\\n"
+        f"📅 <b>تاریخ: {date_text}</b>\\n"
+        f"🕒 <b>ساعت ایران: {time_text}</b>\\n"
+        "🔄 <b>بروزرسانی خودکار هر ۵ دقیقه</b>\\n\\n"
+        "👨‍💻 <b>طراح و سازنده: علی حامدی</b>\\n"
         "👥 <b>گروه تلگرامی: @lab_chats</b>"
     )
 
@@ -254,7 +282,7 @@ def main():
         history = []
 
     image_path = create_image(price, change, history)
-    send_to_telegram(image_path, make_caption(price, change))
+    send_to_telegram(image_path, make_caption(price, change, history))
     logging.info("قیمت LAB: %.5f | تغییر ۲۴ ساعته: %s", price, "نامشخص" if change is None else f"{change:.2f}%")
 
 
