@@ -55,7 +55,7 @@ jobs:
       - name: Validate watcher and run unit tests
         run: |
           python -m compileall -q wallet_watcher.py tests
-          python -m unittest tests.test_wallet_watcher -v
+          python -m unittest discover -s tests -p 'test_wallet_watcher.py' -v
 
       - name: Run wallet watcher
         env:
