@@ -485,7 +485,7 @@ def save_jarvis_state(state):
     temporary = JARVIS_STATE_FILE + ".tmp"
     with open(temporary, "w", encoding="utf-8") as state_file:
         json.dump(state, state_file, ensure_ascii=False, indent=2)
-        state_file.write("\\n")
+        state_file.write("\n")
     os.replace(temporary, JARVIS_STATE_FILE)
 
 
