@@ -266,7 +266,7 @@ def create_status_graphic(changes, first_run=False):
     for x1, y1, x2, y2, panel, accent_color, number, label in cards:
         draw.rounded_rectangle((x1, y1, x2, y2), radius=28, fill=panel, outline=accent_color, width=2)
         draw.text(((x1 + x2) // 2, y1 + 70), number, font=get_font(58, True), fill=accent_color, anchor="mm")
-        draw.text(((x1 + x2) // 2, y1 + 140), label, font=get_font(28, True), fill="#E7EEF8", anchor="mm")
+        rtl_text(draw, ((x1 + x2) // 2, y1 + 140), label, get_font(28, True), "#E7EEF8", anchor="mm")
 
     draw.line((80, 785, width - 80, 785), fill="#2A3D55", width=2)
     rtl_text(draw, (width - 90, 830), "هر ۵ دقیقه یک‌بار بررسی می‌شود", get_font(25), "#AFC4DE")
@@ -288,10 +288,10 @@ def send_status(changes, previous_message_id=None, first_run=False):
     else:
         status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
     caption = (
-        "<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\\n"
-        f"📅 {date_text} | 🕒 {time_text} (ایران)\\n"
-        f"🔎 {status_line}\\n"
-        "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\\n"
+        "<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\n"
+        f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
+        f"🔎 {status_line}\n"
+        "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\n"
         "👥 @lab_chats"
     )
     image_path = create_status_graphic(changes, first_run=first_run)
