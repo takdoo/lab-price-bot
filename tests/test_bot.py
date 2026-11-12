@@ -214,6 +214,31 @@ class JarvisTests(unittest.TestCase):
         self.assertFalse(bot.handle_jarvis_message(admin_message))
         mocked_send.assert_not_called()
 
+    @patch.object(bot, "send_jarvis_text")
+    def test_creator_identity_is_deterministic(self, mocked_send):
+        self.assertTrue(bot.jarvis_admin_command("خالق تو کیه", -100123))
+        mocked_send.assert_called_once_with(
+            -100123, "قربان، خالق و سازنده من علی حامدی هست."
+        )
+
+    def test_persian_command_spacing_is_normalized(self):
+        self.assertEqual(
+            bot.normalize_jarvis_command("پیام‌های خودتو پاک کن"),
+            "پیام های خودتو پاک کن",
+        )
+
+    @patch.object(bot, "send_jarvis_text")
+    @patch.object(bot, "telegram_api")
+    def test_lock_command_refuses_without_restrict_permission(self, mocked_api, mocked_send):
+        mocked_api.side_effect = [
+            {"id": 999},
+            {"status": "administrator", "can_restrict_members": False},
+        ]
+        self.assertTrue(bot.jarvis_admin_command("قفل گروه", -100123))
+        mocked_api.assert_called()
+        mocked_send.assert_called_once()
+        self.assertIn("Restrict Members", mocked_send.call_args.args[1])
+
     @patch.object(bot.HTTP, "post")
     @patch.object(bot, "OPENROUTER_API_KEY", "test-key")
     def test_jarvis_uses_free_router_only(self, mocked_post):
