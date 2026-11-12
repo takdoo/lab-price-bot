@@ -65,7 +65,7 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("نامشخص", caption)
 
     def test_caption_includes_separate_informal_market_comment(self):
-        caption = bot.make_caption(0.041234, -4.0, [0.042, 0.041, 0.040, 0.038])
+        caption = bot.make_caption(0.041234, -4.0, [0.042, 0.041, 0.040, 0.039, 0.042, 0.041, 0.040, 0.038])
         self.assertIn("حرفِ بازار به زبون خودمونی", caption)
         self.assertIn("فشار فروش", caption)
         self.assertNotIn("━━━━━━━━", caption)
