@@ -25,7 +25,7 @@ jobs:
 
       - name: Load persistent wallet snapshot
         run: |
-          git fetch origin lab-wallet-state
+          git fetch origin refs/heads/lab-wallet-state:refs/remotes/origin/lab-wallet-state
           git show origin/lab-wallet-state:top_holders.json > top_holders.json
 
       - name: Install Persian font
