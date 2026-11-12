@@ -516,7 +516,7 @@ def jarvis_admin_command(question, chat_id):
 
     if command in {
         "کی خالقت هست", "کی خالقته", "خالق تو کیه", "سازنده تو کیه",
-        "تو رو کی ساخته", "خالق من کیه", "کی ساختت",
+        "تو رو کی ساخته", "خالق من کیه", "کی ساختت", "خالقته کیه",
     }:
         send_jarvis_text(chat_id, f"قربان، خالق و سازنده من {JARVIS_CREATOR} هست.")
         return True
@@ -558,7 +558,7 @@ def jarvis_admin_command(question, chat_id):
                          + (f"\\n{failed} پیام هم به‌دلیل محدودیت تلگرام حذف نشد." if failed else ""))
         return True
 
-    if command in {"قفل گروه", "گروه رو قفل کن", "گروه را قفل کن", "قفلش کن"}:
+    if command in {"قفل گروه", "گروه رو قفل کن", "گروه را قفل کن", "قفلش کن", "قفل کردن گروه"}:
         member = telegram_api("getChatMember", {"chat_id": chat_id, "user_id": telegram_api("getMe")["id"]}) or {}
         if member.get("status") != "creator" and member.get("can_restrict_members") is not True:
             send_jarvis_text(chat_id, "برای قفل کردن گروه باید دسترسی محدود کردن اعضا (Restrict Members) داشته باشم.")
@@ -571,12 +571,14 @@ def jarvis_admin_command(question, chat_id):
         if not isinstance(original, dict):
             send_jarvis_text(chat_id, "نتونستم مجوزهای فعلی گروه رو بخونم؛ برای جلوگیری از تغییر ناخواسته، قفل نکردم.")
             return True
-        locked = {key: False for key in (
+        locked = dict(original)
+        for key in (
             "can_send_messages", "can_send_audios", "can_send_documents",
             "can_send_photos", "can_send_videos", "can_send_video_notes",
             "can_send_voice_notes", "can_send_polls", "can_send_other_messages",
             "can_add_web_page_previews",
-        )}
+        ):
+            locked[key] = False
         telegram_api("setChatPermissions", {"chat_id": chat_id, "permissions": locked})
         state["original_chat_permissions"] = original
         state["group_locked"] = True
@@ -584,7 +586,7 @@ def jarvis_admin_command(question, chat_id):
         send_jarvis_text(chat_id, "🔒 گروه قفل شد. اعضای عادی فعلاً نمی‌تونن پیام بفرستن؛ مدیرها همچنان دسترسی مدیریتی خودشون رو دارن.")
         return True
 
-    if command in {"باز کردن گروه", "گروه رو باز کن", "گروه را باز کن", "رفع قفل گروه", "آنلاک گروه"}:
+    if command in {"باز کردن گروه", "گروه رو باز کن", "گروه را باز کن", "رفع قفل گروه", "آنلاک گروه", "بازش کن"}:
         member = telegram_api("getChatMember", {"chat_id": chat_id, "user_id": telegram_api("getMe")["id"]}) or {}
         if member.get("status") != "creator" and member.get("can_restrict_members") is not True:
             send_jarvis_text(chat_id, "برای باز کردن گروه باید دسترسی محدود کردن اعضا (Restrict Members) داشته باشم.")
