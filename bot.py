@@ -1,5 +1,6 @@
 import os
 import json
+import io
 import logging
 import math
 import time
@@ -7,6 +8,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import requests
+import cairosvg
 import jdatetime
 from PIL import Image, ImageDraw, ImageFont
 from requests.adapters import HTTPAdapter
@@ -15,7 +17,7 @@ from urllib3.util.retry import Retry
 BOT_TOKEN = (os.getenv("BOT_TOKEN") or "").strip()
 CHAT_ID = (os.getenv("CHAT_ID") or "@lab_chats").strip()
 MESSAGE_ID = (os.getenv("MESSAGE_ID") or "").strip()
-BASE_IMAGE = "lab-price-bot.png"
+BASE_IMAGE = "lab-price-bot.svg"
 OUTPUT_IMAGE = "lab_live.jpg"
 PRICE_API = "https://api.coingecko.com/api/v3/simple/price?ids=lab&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true"
 HISTORY_API = "https://api.coingecko.com/api/v3/coins/lab/market_chart?vs_currency=usd&days=1"
@@ -137,42 +139,65 @@ def draw_chart(draw, prices, x1, y1, x2, y2, color):
 
 def create_image(price, change, history):
     if not os.path.isfile(BASE_IMAGE):
-        raise FileNotFoundError(f"عکس اصلی پیدا نشد: {BASE_IMAGE}")
-    with Image.open(BASE_IMAGE) as source:
+        raise FileNotFoundError(f"فایل طراحی پیدا نشد: {BASE_IMAGE}")
+
+    # SVG gives us a crisp, modern glass dashboard at every output size.
+    png_bytes = cairosvg.svg2png(url=BASE_IMAGE, output_width=1536, output_height=1024)
+    with Image.open(io.BytesIO(png_bytes)) as source:
         image = source.convert("RGB")
 
     draw = ImageDraw.Draw(image)
     width, height = image.size
-    white, green, red, muted = (255, 255, 255), (35, 230, 130), (255, 75, 90), (180, 190, 200)
+    white, green, red, muted = (245, 250, 255), (35, 230, 130), (255, 75, 90), (145, 175, 190)
     price_color = get_price_color(change)
 
-    price_text = f"{chr(36)}{price:.5f}"
-    price_font = fit_font(draw, price_text, int(width * 0.88), max(42, int(width * 0.105)), 20)
-    draw.text(
-        (width // 2, int(height * 0.48)), price_text, font=price_font,
-        fill=price_color, anchor="mm", stroke_width=1, stroke_fill=(0, 0, 0)
-    )
+    # Live Shamsi timestamp.
+    date_text, time_text = get_iran_time()
+    time_font = fit_font(draw, f"{date_text}  {time_text}", 270, 24, 16)
+    draw.text((1300, 183), f"{date_text}  {time_text}", font=time_font, fill=white, anchor="mm")
 
-    left_x1, left_x2 = int(width * 0.10), int(width * 0.47)
-    right_x1, right_x2 = int(width * 0.53), int(width * 0.90)
-    value_font = get_font(max(18, int(width * 0.035)))
-    dash_font = get_font(max(20, int(width * 0.04)))
+    # Oversized live price; its color follows the 24-hour market direction.
+    price_text = f"${price:.5f}"
+    price_font = fit_font(draw, price_text, 980, 190, 70)
+    draw.text((768, 425), price_text, font=price_font, fill=price_color,
+              anchor="mm", stroke_width=2, stroke_fill=(0, 0, 0))
 
     if change is None:
-        for center in ((left_x1 + left_x2) // 2, (right_x1 + right_x2) // 2):
-            draw.text((center, int(height * 0.79)), "—", font=dash_font, fill=muted, anchor="mm")
-    elif change >= 0:
-        draw.text(((left_x1 + left_x2) // 2, int(height * 0.77)), f"+{change:.2f}%", font=value_font, fill=green, anchor="mm")
-        draw_chart(draw, history, left_x1, int(height * 0.82), left_x2, int(height * 0.90), green)
-        draw.text(((right_x1 + right_x2) // 2, int(height * 0.79)), "—", font=dash_font, fill=muted, anchor="mm")
+        change_text = "24H CHANGE: N/A"
+        change_color = muted
+    elif change > 0:
+        change_text = f"▲  +{change:.2f}%   |   24H"
+        change_color = green
+    elif change < 0:
+        change_text = f"▼  {change:.2f}%   |   24H"
+        change_color = red
     else:
-        draw.text(((left_x1 + left_x2) // 2, int(height * 0.79)), "—", font=dash_font, fill=muted, anchor="mm")
-        draw.text(((right_x1 + right_x2) // 2, int(height * 0.80)), f"{change:.2f}%", font=value_font, fill=red, anchor="mm")
-        draw_chart(draw, history, right_x1, int(height * 0.82), right_x2, int(height * 0.90), red)
+        change_text = "—  0.00%   |   24H"
+        change_color = white
 
-    image.save(OUTPUT_IMAGE, "JPEG", quality=95, optimize=True)
+    change_font = fit_font(draw, change_text, 850, 58, 30)
+    draw.text((768, 548), change_text, font=change_font, fill=change_color, anchor="mm")
+
+    # 24-hour high and low are calculated from the fetched price history.
+    valid_history = [float(x) for x in history if isinstance(x, (int, float)) and math.isfinite(float(x)) and float(x) > 0]
+    if valid_history:
+        high_text = f"${max(valid_history):.5f}"
+        low_text = f"${min(valid_history):.5f}"
+    else:
+        high_text = low_text = "N/A"
+    stat_font = fit_font(draw, high_text, 250, 38, 22)
+    draw.text((415, 720), high_text, font=stat_font, fill=green, anchor="mm")
+    draw.text((768, 720), low_text, font=stat_font, fill=red, anchor="mm")
+    source_font = get_font(26)
+    draw.text((1121, 720), "COINGECKO", font=source_font, fill=white, anchor="mm")
+
+    # A fresh 24-hour sparkline is drawn on every run.
+    if len(valid_history) >= 2:
+        chart_color = green if valid_history[-1] >= valid_history[0] else red
+        draw_chart(draw, valid_history, 235, 850, 1300, 900, chart_color)
+
+    image.save(OUTPUT_IMAGE, "JPEG", quality=94, optimize=True)
     return OUTPUT_IMAGE
-
 
 def get_iran_time():
     now = datetime.now(ZoneInfo("Asia/Tehran"))
