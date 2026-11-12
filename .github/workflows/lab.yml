@@ -59,6 +59,7 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JARVIS_ADMIN_ID: "5477408842"
+          JARVIS_LISTEN_SECONDS: "240"
         run: |
           for attempt in 1 2 3; do
             echo "Price update attempt $attempt/3"
