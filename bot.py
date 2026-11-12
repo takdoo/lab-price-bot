@@ -16,7 +16,6 @@ from urllib3.util.retry import Retry
 
 BOT_TOKEN = (os.getenv("BOT_TOKEN") or "").strip()
 CHAT_ID = (os.getenv("CHAT_ID") or "@lab_chats").strip()
-MESSAGE_ID = (os.getenv("MESSAGE_ID") or "").strip()
 BASE_IMAGE = "lab-price-bot.svg"
 OUTPUT_IMAGE = "lab_live.jpg"
 PRICE_API = "https://api.coingecko.com/api/v3/simple/price?ids=lab&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true"
@@ -265,28 +264,21 @@ def send_to_telegram(image_path, caption):
         raise ValueError("توکن ربات در GitHub Secrets تنظیم نشده است")
     if not CHAT_ID:
         raise ValueError("CHAT_ID خالی است")
-    if not MESSAGE_ID:
-        raise ValueError("MESSAGE_ID در GitHub Secrets تنظیم نشده؛ شناسه پیام ثابت را ثبت کنید")
-    if not MESSAGE_ID.isdigit():
-        raise ValueError("MESSAGE_ID باید فقط شامل عدد باشد")
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageMedia"
-    media = {
-        "type": "photo", "media": "attach://photo",
-        "caption": caption, "parse_mode": "HTML"
-    }
+    # Publish a fresh photo message on every run so the latest price stays near
+    # the bottom of the group chat instead of editing an older fixed message.
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     last_error = None
 
     for attempt in range(1, TELEGRAM_MAX_ATTEMPTS + 1):
         try:
-            # Reopen the stream on each attempt; requests consumes file handles.
             with open(image_path, "rb") as photo:
                 response = HTTP.post(
                     url,
                     data={
                         "chat_id": CHAT_ID,
-                        "message_id": int(MESSAGE_ID),
-                        "media": json.dumps(media, ensure_ascii=False)
+                        "caption": caption,
+                        "parse_mode": "HTML",
                     },
                     files={"photo": photo},
                     timeout=REQUEST_TIMEOUT
@@ -305,14 +297,11 @@ def send_to_telegram(image_path, caption):
                 raise RuntimeError("پاسخ تلگرام JSON معتبر نیست") from error
 
             if result.get("ok"):
-                logging.info("پیام ثابت LAB با موفقیت ویرایش شد؛ message_id=%s", MESSAGE_ID)
+                message_id = (result.get("result") or {}).get("message_id")
+                logging.info("پیام جدید LAB با موفقیت ارسال شد؛ message_id=%s", message_id)
                 return
 
             description = str(result.get("description", "خطای نامشخص تلگرام"))
-            if "message is not modified" in description.lower():
-                logging.info("پیام تلگرام از قبل همین محتوا را دارد؛ خطای واقعی نیست")
-                return
-
             error_code = int(result.get("error_code", response.status_code))
             last_error = RuntimeError(f"خطای تلگرام {error_code}: {description}")
             if error_code == 429 or error_code >= 500:
@@ -333,7 +322,7 @@ def send_to_telegram(image_path, caption):
                 continue
             break
 
-    raise RuntimeError(f"ویرایش پیام تلگرام پس از {TELEGRAM_MAX_ATTEMPTS} تلاش ناموفق بود: {last_error}")
+    raise RuntimeError(f"ارسال پیام جدید تلگرام پس از {TELEGRAM_MAX_ATTEMPTS} تلاش ناموفق بود: {last_error}")
 
 
 def main():
