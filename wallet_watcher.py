@@ -163,6 +163,8 @@ def create_graphic(changes):
         rtl_text(draw, (width - 90, 380), "تغییر تازه‌ای ثبت نشده است", get_font(40, True), "#DCE8F7")
     else:
         y = 285
+        magnitudes = [abs(item["delta"]) for item in changes if item["delta"] is not None and item["delta"] != 0]
+        max_magnitude = max(magnitudes, default=Decimal("1"))
         for item in changes[:10]:
             positive = item["delta"] is not None and item["delta"] > 0
             negative = item["delta"] is not None and item["delta"] < 0
@@ -189,12 +191,17 @@ def create_graphic(changes):
                 sign = "+" if positive else "−"
                 delta_text = sign + fmt_amount(abs(item["delta"])) + " LAB"
                 draw.text((95, y + 82), delta_text, font=get_font(23, True), fill=accent, anchor="ls")
+                # Mini bar compares this wallet's balance change with the largest change in the report.
+                bar_width = max(4, int((abs(item["delta"]) / max_magnitude) * 260))
+                draw.rounded_rectangle((410, y + 78, 675, y + 91), radius=6, fill="#26384D")
+                draw.rounded_rectangle((410, y + 78, 410 + bar_width, y + 91), radius=6, fill=accent)
                 if abs(item["delta"]) >= ALERT_THRESHOLD:
                     draw.text((width - 95, y + 105), "هشدار تغییر بزرگ", font=get_font(18, True), fill="#F4C66A", anchor="rs")
             y += 118
 
     draw.line((75, height - 160, width - 75, height - 160), fill="#2A3B52", width=2)
     rtl_text(draw, (width - 90, height - 112), "تغییر موجودی به‌تنهایی به معنی خرید یا فروش نیست", get_font(24), "#A9BED8")
+    draw.text((90, height - 112), "منبع داده: CoinMarketCap", font=get_font(18), fill="#7189A5", anchor="ls")
     draw.text((90, height - 58), "BSC  •  LAB", font=get_font(23, True), fill="#29E69A", anchor="ls")
     rtl_text(draw, (width - 90, height - 58), "گروه تلگرامی @lab_chats", get_font(23), "#DCE8F7")
     image.save(OUTPUT_FILE, "JPEG", quality=94, optimize=True)
