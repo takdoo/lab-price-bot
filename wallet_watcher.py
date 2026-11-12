@@ -277,7 +277,34 @@ def send_to_telegram(image_path, changes):
     result = response.json()
     if not result.get("ok"):
         raise RuntimeError(f"Telegram sendPhoto failed: {result.get('description')}")
+    message_id = result["result"]["message_id"]
     logging.info("گزارش تغییر کیف پول‌ها در گروه ارسال شد")
+    return message_id
+
+
+def delete_telegram_message(message_id):
+    """Delete only a previously tracked bot message."""
+    if not message_id:
+        return True
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
+    try:
+        response = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "message_id": message_id},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("ok"):
+            logging.info("پیام قبلی دیده‌بان حذف شد: %s", message_id)
+            return True
+        description = str(result.get("description") or "")
+        if "message to delete not found" in description.lower():
+            return True
+        logging.warning("پیام قبلی دیده‌بان حذف نشد: %s", description)
+    except (requests.RequestException, ValueError) as exc:
+        logging.warning("حذف پیام قبلی دیده‌بان ناموفق بود: %s", exc)
+    return False
 
 
 def create_status_graphic(changes, first_run=False):
@@ -370,10 +397,11 @@ def send_status(changes, previous_message_id=None, first_run=False):
             logging.warning("حذف پیام وضعیت قبلی ناموفق بود: %s", exc)
     return new_message_id
 
-def save_state(holders, status_message_id):
+def save_state(holders, status_message_id, alert_message_ids=None):
     payload = {
         "holders": {item["address"]: item["balance"] for item in holders},
         "status_message_id": status_message_id,
+        "alert_message_ids": list(alert_message_ids or []),
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
     }
     STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -385,21 +413,35 @@ def main():
     previous = state.get("holders", {})
     first_run = not previous
 
+    # Older state files have no alert ID; keep backward compatibility with them.
+    previous_alert_ids = state.get("alert_message_ids")
+    if not isinstance(previous_alert_ids, list):
+        previous_alert_ids = [state.get("alert_message_id")]
+    pending_alert_ids = [message_id for message_id in previous_alert_ids if message_id]
+
     changes = compare(previous, current) if previous else []
     if changes:
         image_path = create_graphic(changes)
-        send_to_telegram(image_path, changes)
+        new_alert_id = send_to_telegram(image_path, changes)
+    else:
+        new_alert_id = None
+
+    # Delete only alert photo IDs recorded by this watcher. Retry failures next run.
+    remaining_alert_ids = []
+    for message_id in pending_alert_ids:
+        if not delete_telegram_message(message_id):
+            remaining_alert_ids.append(message_id)
+    if new_alert_id:
+        remaining_alert_ids.append(new_alert_id)
 
     new_status_id = send_status(
         changes,
         previous_message_id=state.get("status_message_id"),
         first_run=first_run,
     )
-    save_state(current, new_status_id)
-    if first_run:
-        logging.info("نقطه شروع ۱۰ هولدر ثبت شد؛ گزارش وضعیت اولیه در گروه ارسال شد")
-    elif not changes:
-        logging.info("بدون تغییر؛ فقط پیام وضعیت جدید جایگزین پیام وضعیت قبلی شد")
+    save_state(current, new_status_id, remaining_alert_ids)
+
+
 
 
 if __name__ == "__main__":
