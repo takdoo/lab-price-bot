@@ -269,6 +269,155 @@ def telegram_api(method, payload=None):
     return result.get("result")
 
 
+
+# Telegram service-message fields. Ordinary text, media, and user messages are never deleted.
+SERVICE_MESSAGE_FIELDS = {
+    "pinned_message",
+    "new_chat_members",
+    "left_chat_member",
+    "new_chat_title",
+    "new_chat_photo",
+    "delete_chat_photo",
+    "group_chat_created",
+    "supergroup_chat_created",
+    "channel_chat_created",
+    "migrate_to_chat_id",
+    "migrate_from_chat_id",
+    "message_auto_delete_timer_changed",
+    "forum_topic_created",
+    "forum_topic_edited",
+    "forum_topic_closed",
+    "forum_topic_reopened",
+    "general_forum_topic_hidden",
+    "general_forum_topic_unhidden",
+    "video_chat_scheduled",
+    "video_chat_started",
+    "video_chat_ended",
+    "video_chat_participants_invited",
+    "giveaway_created",
+    "giveaway",
+    "giveaway_winners",
+    "giveaway_completed",
+    "boost_added",
+    "proximity_alert_triggered",
+    "checklist_tasks_added",
+    "checklist_tasks_done",
+    "direct_messages_topic_created",
+    "direct_messages_topic_edited",
+    "direct_messages_topic_closed",
+    "direct_messages_topic_reopened",
+    "suggested_post_approved",
+    "suggested_post_approval_failed",
+    "suggested_post_declined",
+    "suggested_post_paid",
+    "suggested_post_refunded",
+}
+
+
+def is_telegram_service_message(message):
+    return isinstance(message, dict) and any(
+        field in message for field in SERVICE_MESSAGE_FIELDS
+    )
+
+
+def cleanup_telegram_service_messages():
+    """Delete Telegram service notices in our group without touching user posts."""
+    if not BOT_TOKEN or not CHAT_ID:
+        return 0
+
+    try:
+        webhook = telegram_api("getWebhookInfo")
+        if (webhook or {}).get("url"):
+            logging.warning(
+                "پاکسازی اعلان‌ها انجام نشد: برای این ربات webhook فعال است؛ "
+                "برای جلوگیری از تداخل، polling اجرا نشد"
+            )
+            return 0
+
+        me = telegram_api("getMe") or {}
+        bot_id = me.get("id")
+        if not bot_id:
+            logging.warning("پاکسازی اعلان‌ها انجام نشد: شناسه ربات دریافت نشد")
+            return 0
+
+        chat = telegram_api("getChat", {"chat_id": CHAT_ID}) or {}
+        target_chat_id = chat.get("id")
+        chat_type = chat.get("type")
+        if target_chat_id is None:
+            logging.warning("پاکسازی اعلان‌ها انجام نشد: شناسه گروه دریافت نشد")
+            return 0
+
+        member = telegram_api(
+            "getChatMember",
+            {"chat_id": target_chat_id, "user_id": bot_id},
+        ) or {}
+        status = member.get("status")
+        can_delete = (
+            status == "creator"
+            or member.get("can_delete_messages") is True
+            or (chat_type == "group" and status == "administrator")
+        )
+        if not can_delete:
+            logging.warning(
+                "پاکسازی اعلان‌ها انجام نشد: ربات در گروه دسترسی حذف پیام‌ها ندارد"
+            )
+            return 0
+
+        deleted_count = 0
+        offset = None
+        # Drain queued updates in bounded batches. A final offset call confirms
+        # the last batch, so already handled updates are not processed again.
+        for _ in range(10):
+            payload = {"limit": 100, "timeout": 0}
+            if offset is not None:
+                payload["offset"] = offset
+            updates = telegram_api("getUpdates", payload) or []
+            if not updates:
+                break
+
+            for update in updates:
+                message = (update or {}).get("message")
+                if not is_telegram_service_message(message):
+                    continue
+                message_chat = message.get("chat") or {}
+                if message_chat.get("id") != target_chat_id:
+                    continue
+                message_id = message.get("message_id")
+                if message_id is None:
+                    continue
+                try:
+                    telegram_api(
+                        "deleteMessage",
+                        {"chat_id": target_chat_id, "message_id": message_id},
+                    )
+                    deleted_count += 1
+                except Exception as error:
+                    # Some historic/system messages (for example group creation)
+                    # are not deletable; continue with the remaining notices.
+                    logging.info(
+                        "اعلان سیستمی %s حذف نشد: %s",
+                        message_id,
+                        str(error)[:240],
+                    )
+
+            offset = max(item["update_id"] for item in updates) + 1
+
+        if offset is not None:
+            # Acknowledge the final batch. Any newer updates returned here remain
+            # pending and are handled by the next five-minute run.
+            telegram_api("getUpdates", {"offset": offset, "limit": 1, "timeout": 0})
+
+        if deleted_count:
+            logging.info("تعداد %s اعلان سیستمی تلگرام حذف شد", deleted_count)
+        else:
+            logging.info("اعلان سیستمی قابل‌حذفی در صف نبود")
+        return deleted_count
+
+    except Exception:
+        logging.exception("پاکسازی اعلان‌های سیستمی تلگرام ناموفق بود؛ ارسال قیمت ادامه دارد")
+        return 0
+
+
 def send_to_telegram(image_path, caption):
     if not BOT_TOKEN:
         raise ValueError("توکن ربات در GitHub Secrets تنظیم نشده است")
@@ -361,6 +510,7 @@ def send_to_telegram(image_path, caption):
                         logging.info("پیام قبلی LAB حذف شد؛ message_id=%s", old_id)
                     except Exception:
                         logging.exception("پیام قبلی LAB حذف نشد؛ ربات باید اجازه Delete Messages داشته باشد")
+            cleanup_telegram_service_messages()
             return
 
         except (requests.Timeout, requests.ConnectionError) as error:
