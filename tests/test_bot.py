@@ -84,7 +84,7 @@ class RenderingTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
-    @patch.object(bot, "cleanup_telegram_service_messages", lambda: 0)
+    @patch.object(bot, "cleanup_telegram_service_messages", lambda listen_seconds=0: 0)
     @patch.object(bot, "telegram_api")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
