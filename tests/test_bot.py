@@ -84,7 +84,7 @@ class RenderingTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
-    @patch.object(bot, "cleanup_telegram_service_messages")
+    @patch.object(bot, "cleanup_telegram_service_messages", lambda: 0)
     @patch.object(bot, "telegram_api")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
@@ -104,6 +104,7 @@ class TelegramTests(unittest.TestCase):
         self.assertIn("/sendPhoto", mocked_post.call_args.args[0])
         self.assertEqual(mocked_api.call_args_list[-1].args[0], "pinChatMessage")
 
+    @patch.object(bot, "cleanup_telegram_service_messages", lambda: 0)
     @patch.object(bot, "telegram_api")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
