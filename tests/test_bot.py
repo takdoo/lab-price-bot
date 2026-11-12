@@ -180,6 +180,38 @@ class TelegramTests(unittest.TestCase):
 
 class JarvisTests(unittest.TestCase):
     @patch.object(bot.HTTP, "get")
+    def test_bing_news_rss_parses_results(self, mocked_get):
+        response = Mock()
+        response.content = (
+            b'<?xml version="1.0"?><rss><channel><item>'
+            b'<title>Bitcoin market news</title>'
+            b'<link>https://example.com/btc</link>'
+            b'<description>BTC update</description>'
+            b'</item></channel></rss>'
+        )
+        response.raise_for_status.return_value = None
+        mocked_get.return_value = response
+        results = bot.bing_news_search("Bitcoin", limit=2)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["provider"], "Bing News")
+        self.assertIn("BTC update", results[0]["snippet"])
+
+    @patch.object(bot.HTTP, "post")
+    @patch.object(bot, "OPENROUTER_API_KEY", "test-key")
+    def test_jarvis_falls_back_to_source_digest_if_free_model_returns_empty(self, mocked_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {"choices": []}
+        mocked_post.return_value = response
+        answer = bot.ask_openrouter_free("Bitcoin چیست؟", [{
+            "title": "Bitcoin source",
+            "url": "https://example.com/bitcoin",
+            "snippet": "Bitcoin is a decentralized digital currency.",
+        }])
+        self.assertIn("مدل هوش مصنوعی رایگان", answer)
+        self.assertIn("decentralized digital currency", answer)
+
+    @patch.object(bot.HTTP, "get")
     def test_google_news_search_parses_rss_results(self, mocked_get):
         response = Mock()
         response.content = (
