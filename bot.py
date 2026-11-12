@@ -138,12 +138,13 @@ def create_image(price, change, history):
     draw = ImageDraw.Draw(image)
     width, height = image.size
     white, green, red, muted = (255, 255, 255), (35, 230, 130), (255, 75, 90), (180, 190, 200)
+    price_color = green if change is not None and change > 0 else red if change is not None and change < 0 else white
 
     price_text = f"{chr(36)}{price:.5f}"
     price_font = fit_font(draw, price_text, int(width * 0.88), max(42, int(width * 0.105)), 20)
     draw.text(
         (width // 2, int(height * 0.48)), price_text, font=price_font,
-        fill=white, anchor="mm", stroke_width=1, stroke_fill=(0, 0, 0)
+        fill=price_color, anchor="mm", stroke_width=1, stroke_fill=(0, 0, 0)
     )
 
     left_x1, left_x2 = int(width * 0.10), int(width * 0.47)
