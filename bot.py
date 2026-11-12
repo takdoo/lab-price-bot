@@ -259,31 +259,46 @@ def make_caption(price, change, history=None):
     )
 
 
+def telegram_api(method, payload=None):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    response = HTTP.post(url, json=payload or {}, timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    result = response.json()
+    if not result.get("ok"):
+        raise RuntimeError(f"Telegram {method} failed: {result.get('description', 'unknown error')}")
+    return result.get("result")
+
+
 def send_to_telegram(image_path, caption):
     if not BOT_TOKEN:
         raise ValueError("توکن ربات در GitHub Secrets تنظیم نشده است")
     if not CHAT_ID:
         raise ValueError("CHAT_ID خالی است")
 
-    # Publish a fresh photo message on every run so the latest price stays near
-    # the bottom of the group chat instead of editing an older fixed message.
+    # Read the current pinned message before publishing the next LAB update.
+    # After the new post is pinned, remove the previous pin only if it is
+    # demonstrably an older LAB post authored by this same bot.
+    previous_pinned = None
+    bot_id = None
+    try:
+        me = telegram_api("getMe")
+        bot_id = me.get("id")
+        chat = telegram_api("getChat", {"chat_id": CHAT_ID})
+        previous_pinned = chat.get("pinned_message")
+    except Exception:
+        logging.exception("نتوانستم پیام سنجاق‌شده قبلی را بررسی کنم؛ ارسال پیام جدید ادامه پیدا می‌کند")
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     last_error = None
-
     for attempt in range(1, TELEGRAM_MAX_ATTEMPTS + 1):
         try:
             with open(image_path, "rb") as photo:
                 response = HTTP.post(
                     url,
-                    data={
-                        "chat_id": CHAT_ID,
-                        "caption": caption,
-                        "parse_mode": "HTML",
-                    },
+                    data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
                     files={"photo": photo},
                     timeout=REQUEST_TIMEOUT
                 )
-
             try:
                 result = response.json()
             except ValueError as error:
@@ -296,29 +311,62 @@ def send_to_telegram(image_path, caption):
                 response.raise_for_status()
                 raise RuntimeError("پاسخ تلگرام JSON معتبر نیست") from error
 
-            if result.get("ok"):
-                message_id = (result.get("result") or {}).get("message_id")
-                logging.info("پیام جدید LAB با موفقیت ارسال شد؛ message_id=%s", message_id)
-                return
+            if not result.get("ok"):
+                description = str(result.get("description", "خطای نامشخص تلگرام"))
+                error_code = int(result.get("error_code", response.status_code))
+                last_error = RuntimeError(f"خطای تلگرام {error_code}: {description}")
+                if error_code == 429 or error_code >= 500:
+                    retry_after = (result.get("parameters") or {}).get("retry_after", TELEGRAM_RETRY_SECONDS)
+                    if attempt < TELEGRAM_MAX_ATTEMPTS:
+                        time.sleep(min(max(int(retry_after), 1), 60))
+                        continue
+                raise last_error
 
-            description = str(result.get("description", "خطای نامشخص تلگرام"))
-            error_code = int(result.get("error_code", response.status_code))
-            last_error = RuntimeError(f"خطای تلگرام {error_code}: {description}")
-            if error_code == 429 or error_code >= 500:
-                retry_after = (result.get("parameters") or {}).get("retry_after", TELEGRAM_RETRY_SECONDS)
-                if attempt < TELEGRAM_MAX_ATTEMPTS:
-                    delay = min(max(int(retry_after), 1), 60)
-                    logging.warning("خطای موقت تلگرام؛ تلاش %s از %s پس از %s ثانیه", attempt + 1, TELEGRAM_MAX_ATTEMPTS, delay)
-                    time.sleep(delay)
-                    continue
-            raise last_error
+            new_message = result.get("result") or {}
+            new_message_id = new_message.get("message_id")
+            logging.info("پیام جدید LAB ارسال شد؛ message_id=%s", new_message_id)
+
+            # Pin the fresh update first, so the group always has a current
+            # price at the top. If permissions are missing, leave the post
+            # visible and report the required admin permissions.
+            pinned = False
+            try:
+                telegram_api("pinChatMessage", {
+                    "chat_id": CHAT_ID,
+                    "message_id": new_message_id,
+                    "disable_notification": True,
+                })
+                pinned = True
+                logging.info("پیام جدید LAB سنجاق شد")
+            except Exception:
+                logging.exception("پیام ارسال شد اما سنجاق نشد؛ ربات باید اجازه Pin Messages داشته باشد")
+
+            # Delete only the previous pinned LAB message, never unrelated
+            # messages pinned by an administrator.
+            if pinned and previous_pinned:
+                old_id = previous_pinned.get("message_id")
+                old_from = previous_pinned.get("from") or {}
+                old_caption = previous_pinned.get("caption") or ""
+                is_our_old_lab_post = (
+                    old_id
+                    and old_from.get("id") == bot_id
+                    and "گزارش لحظه‌ای LAB" in old_caption
+                )
+                if is_our_old_lab_post and old_id != new_message_id:
+                    try:
+                        telegram_api("deleteMessage", {
+                            "chat_id": CHAT_ID,
+                            "message_id": old_id,
+                        })
+                        logging.info("پیام قبلی LAB حذف شد؛ message_id=%s", old_id)
+                    except Exception:
+                        logging.exception("پیام قبلی LAB حذف نشد؛ ربات باید اجازه Delete Messages داشته باشد")
+            return
 
         except (requests.Timeout, requests.ConnectionError) as error:
             last_error = error
             if attempt < TELEGRAM_MAX_ATTEMPTS:
-                delay = TELEGRAM_RETRY_SECONDS * attempt
-                logging.warning("ارتباط با تلگرام قطع شد؛ تلاش مجدد در %s ثانیه (%s/%s)", delay, attempt + 1, TELEGRAM_MAX_ATTEMPTS)
-                time.sleep(delay)
+                time.sleep(TELEGRAM_RETRY_SECONDS * attempt)
                 continue
             break
 
