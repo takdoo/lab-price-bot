@@ -7,6 +7,7 @@ import time
 import re
 from html.parser import HTMLParser
 from urllib.parse import urlparse, parse_qs, unquote
+from xml.etree import ElementTree
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -387,6 +388,42 @@ class DuckDuckGoParser(HTMLParser):
     _inside_bing_heading = False
 
 
+def google_news_search(query, limit=JARVIS_MAX_SOURCES):
+    """Search Google News RSS without an API key; this covers news, not the full web index."""
+    endpoint = "https://news.google.com/rss/search"
+    params = {"q": query, "hl": "fa", "gl": "IR", "ceid": "IR:fa"}
+    try:
+        response = HTTP.get(
+            endpoint,
+            params=params,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; LAB-JARVIS/2.0)"},
+            timeout=(8, 15),
+        )
+        response.raise_for_status()
+        root = ElementTree.fromstring(response.content)
+        results = []
+        seen = set()
+        for item in root.findall(".//item"):
+            title = (item.findtext("title") or "").strip()
+            url = (item.findtext("link") or "").strip()
+            snippet = (item.findtext("description") or "").strip()
+            if not title or not url or url in seen:
+                continue
+            seen.add(url)
+            results.append({
+                "title": title[:240],
+                "url": url,
+                "snippet": re.sub(r"<[^>]+>", " ", snippet)[:700],
+            })
+            if len(results) >= limit:
+                break
+        logging.info("Google News RSS returned %s results", len(results))
+        return results
+    except Exception as error:
+        logging.warning("Google News RSS failed: %s", error)
+        return []
+
+
 def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
     """Search free public HTML endpoints; no paid API or key is required."""
     endpoints = (
@@ -395,6 +432,8 @@ def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
         ("https://www.bing.com/search", {"q": query}),
     )
     errors = []
+    collected = google_news_search(query, limit=limit)
+    seen_urls = {item["url"] for item in collected}
     for endpoint, params in endpoints:
         try:
             response = HTTP.get(
@@ -439,15 +478,20 @@ def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
                     "url": raw_url,
                     "snippet": snippet[:700],
                 })
-                if len(found) >= limit:
-                    return found
+                if len(collected) < limit and raw_url not in seen_urls:
+                    collected.append(found[-1])
+                    seen_urls.add(raw_url)
+                if len(collected) >= limit:
+                    return collected[:limit]
             if found:
-                logging.info("JARVIS search found %s results via %s", len(found), endpoint)
-                return found
+                logging.info("JARVIS search collected %s results including %s", len(collected), endpoint)
             errors.append(f"{endpoint}: no parseable results")
         except Exception as error:
             errors.append(f"{endpoint}: {str(error)[:120]}")
             logging.warning("JARVIS search endpoint failed (%s): %s", endpoint, error)
+    if collected:
+        logging.info("JARVIS returned %s combined Google/DDG/Bing results", len(collected))
+        return collected[:limit]
     logging.warning("All free search endpoints failed: %s", " | ".join(errors))
     return []
 
