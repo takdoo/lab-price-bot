@@ -75,10 +75,12 @@ def fetch_holders():
             raise RuntimeError(f"CoinMarketCap request failed for platform {platform}: {failures[-1]}")
         candidate_payload = response.json()
         status = candidate_payload.get("status") or {}
-        if status.get("error_code") not in (None, 0):
-            error = f"{platform}: CMC {status.get('error_code')} {status.get('error_message')}"
+        error_code = status.get("error_code")
+        # CMC sometimes serializes the success code as the string "0".
+        if error_code not in (None, 0, "0"):
+            error = f"{platform}: CMC {error_code} {status.get('error_message')}"
             failures.append(error)
-            if str(status.get("error_code")) in {"400", "1001"}:
+            if str(error_code) in {"400", "1001"}:
                 continue
             raise RuntimeError(error)
         payload = candidate_payload
