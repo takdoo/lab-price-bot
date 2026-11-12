@@ -89,7 +89,7 @@ def load_state():
         return {}
     try:
         raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        return raw.get("holders", {}) if isinstance(raw, dict) else {}
+        return raw if isinstance(raw, dict) else {}
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"فایل وضعیت قبلی خراب یا غیرقابل‌خواندن است: {exc}") from exc
 
@@ -234,30 +234,88 @@ def send_to_telegram(image_path, changes):
     logging.info("گزارش تغییر کیف پول‌ها در گروه ارسال شد")
 
 
-def save_state(holders):
+def send_status(changes, previous_message_id=None, first_run=False):
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN تنظیم نشده است")
+    date_text, time_text = iran_time()
+    balance_changes = sum(1 for item in changes if item["delta"] is not None and item["delta"] != 0)
+    rank_changes = sum(1 for item in changes if item["old_rank"] != item["new_rank"])
+    if first_run:
+        status_line = "نقطه شروع ثبت شد؛ از بررسی بعدی تغییرات قابل مقایسه‌اند."
+        status_emoji = "🟡"
+    elif not changes:
+        status_line = "هیچ تغییری در موجودی یا رتبه ۱۰ کیف پول برتر ثبت نشد."
+        status_emoji = "🟢"
+    else:
+        status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
+        status_emoji = "🟠"
+    message = (
+        f"<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\\n"
+        f"📅 {date_text} | 🕒 {time_text} (ایران)\\n"
+        f"🔍 بررسی: <b>۱۰ کیف پول برتر</b>\\n"
+        f"{status_emoji} {status_line}\\n"
+        "⏱ بررسی بعدی حدود ۵ دقیقه دیگر\\n"
+        "👥 @lab_chats"
+    )
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    response = requests.post(
+        url,
+        data={"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": "true"},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    result = response.json()
+    if not result.get("ok"):
+        raise RuntimeError(f"Telegram sendMessage failed: {result.get('description')}")
+    new_message_id = result["result"]["message_id"]
+
+    # Keep only the newest periodic status post. Change-alert photo posts remain untouched.
+    if previous_message_id:
+        delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
+        try:
+            deleted = requests.post(
+                delete_url,
+                data={"chat_id": CHAT_ID, "message_id": previous_message_id},
+                timeout=TIMEOUT,
+            )
+            deleted.raise_for_status()
+            if not deleted.json().get("ok"):
+                logging.warning("پیام وضعیت قبلی حذف نشد: %s", deleted.text[:300])
+        except requests.RequestException as exc:
+            logging.warning("حذف پیام وضعیت قبلی ناموفق بود: %s", exc)
+    return new_message_id
+
+
+def save_state(holders, status_message_id):
     payload = {
         "holders": {item["address"]: item["balance"] for item in holders},
+        "status_message_id": status_message_id,
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
     }
-    STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
 
 
 def main():
     current = fetch_holders()
-    previous = load_state()
-    if not previous:
-        save_state(current)
-        logging.info("اولین تصویر مبنا ذخیره شد؛ برای جلوگیری از هشدار اشتباه، پیامی ارسال نشد")
-        return
+    state = load_state()
+    previous = state.get("holders", {})
+    first_run = not previous
 
-    changes = compare(previous, current)
+    changes = compare(previous, current) if previous else []
     if changes:
         image_path = create_graphic(changes)
         send_to_telegram(image_path, changes)
-    else:
-        logging.info("هیچ تغییر واقعی در موجودی یا رتبه ۱۰ هولدر برتر دیده نشد؛ پیامی ارسال نمی‌شود")
-    if changes:
-        save_state(current)
+
+    new_status_id = send_status(
+        changes,
+        previous_message_id=state.get("status_message_id"),
+        first_run=first_run,
+    )
+    save_state(current, new_status_id)
+    if first_run:
+        logging.info("نقطه شروع ۱۰ هولدر ثبت شد؛ گزارش وضعیت اولیه در گروه ارسال شد")
+    elif not changes:
+        logging.info("بدون تغییر؛ فقط پیام وضعیت جدید جایگزین پیام وضعیت قبلی شد")
 
 
 if __name__ == "__main__":
