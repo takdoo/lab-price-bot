@@ -2,8 +2,9 @@ name: LAB Premium Price Bot
 
 on:
   schedule:
-    # GitHub scheduled workflows are best-effort and may start late.
-    - cron: "*/5 * * * *"
+    # Offset runs away from common 5-minute boundaries to reduce queue contention.
+    # Runs at minutes 2, 7, 12, ... 57 UTC (every 5 minutes).
+    - cron: "2-59/5 * * * *"
   workflow_dispatch:
   push:
     branches:
@@ -21,6 +22,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Log trigger and schedule
+        run: |
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Cron: ${{ github.event.schedule || 'manual/push' }}"
+          echo "UTC now: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
       - name: Checkout
         uses: actions/checkout@v7
 
