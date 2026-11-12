@@ -337,29 +337,46 @@ def is_telegram_service_message(message):
 
 
 class DuckDuckGoParser(HTMLParser):
-    """Small standard-library parser for DuckDuckGo HTML search results."""
+    """Parse common result layouts from DuckDuckGo HTML/lite and Bing."""
     def __init__(self):
         super().__init__()
         self.results = []
         self.current = None
         self.in_result_title = False
         self.in_snippet = False
+        self.in_bing_result = False
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         classes = (attrs.get("class") or "").split()
-        if tag == "a" and "result__a" in classes:
+        if tag == "li" and "b_algo" in classes:
+            self.in_bing_result = True
+        if tag == "a" and (
+            "result__a" in classes or "result-link" in classes
+            or (self.in_bing_result and self._inside_bing_heading)
+        ):
             self.current = {"title": "", "url": attrs.get("href", ""), "snippet": ""}
             self.results.append(self.current)
             self.in_result_title = True
-        elif "result__snippet" in classes and self.results:
+        elif tag == "h2" and self.in_bing_result:
+            self._inside_bing_heading = True
+        elif self.results and (
+            "result__snippet" in classes or "result-snippet" in classes
+            or ("b_caption" in classes)
+        ):
+            self.in_snippet = True
+        elif tag == "p" and self.in_bing_result and self.results:
             self.in_snippet = True
 
     def handle_endtag(self, tag):
         if tag == "a" and self.in_result_title:
             self.in_result_title = False
-        if self.in_snippet and tag in ("a", "div", "td"):
+        if tag == "h2":
+            self._inside_bing_heading = False
+        if self.in_snippet and tag in ("div", "td", "p"):
             self.in_snippet = False
+        if tag == "li" and self.in_bing_result:
+            self.in_bing_result = False
 
     def handle_data(self, data):
         if self.in_result_title and self.current is not None:
@@ -367,38 +384,72 @@ class DuckDuckGoParser(HTMLParser):
         elif self.in_snippet and self.results:
             self.results[-1]["snippet"] += data
 
+    _inside_bing_heading = False
+
 
 def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
-    """Free web search; no API key or paid search provider is used."""
-    response = HTTP.get(
-        "https://html.duckduckgo.com/html/",
-        params={"q": query},
-        headers={"User-Agent": "Mozilla/5.0 (compatible; LAB-JARVIS/1.0)"},
-        timeout=(10, 20),
+    """Search free public HTML endpoints; no paid API or key is required."""
+    endpoints = (
+        ("https://html.duckduckgo.com/html/", {"q": query}),
+        ("https://lite.duckduckgo.com/lite/", {"q": query}),
+        ("https://www.bing.com/search", {"q": query}),
     )
-    response.raise_for_status()
-    parser = DuckDuckGoParser()
-    parser.feed(response.text)
-    found = []
-    seen = set()
-    for item in parser.results:
-        raw_url = (item.get("url") or "").strip()
-        if not raw_url:
-            continue
-        parsed = urlparse(raw_url)
-        if "duckduckgo.com" in (parsed.netloc or ""):
-            target = parse_qs(parsed.query).get("uddg", [""])[0]
-            if target:
-                raw_url = unquote(target)
-        if not raw_url.startswith(("http://", "https://")) or raw_url in seen:
-            continue
-        seen.add(raw_url)
-        title = " ".join(item.get("title", "").split())
-        snippet = " ".join(item.get("snippet", "").split())
-        found.append({"title": title[:240], "url": raw_url, "snippet": snippet[:700]})
-        if len(found) >= limit:
-            break
-    return found
+    errors = []
+    for endpoint, params in endpoints:
+        try:
+            response = HTTP.get(
+                endpoint,
+                params=params,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux x86_64) "
+                        "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+                    ),
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "fa,en-US;q=0.8,en;q=0.6",
+                },
+                timeout=(8, 15),
+            )
+            response.raise_for_status()
+            parser = DuckDuckGoParser()
+            parser.feed(response.text)
+            found = []
+            seen = set()
+            for item in parser.results:
+                raw_url = (item.get("url") or "").strip()
+                if not raw_url:
+                    continue
+                parsed = urlparse(raw_url)
+                if "duckduckgo.com" in (parsed.netloc or ""):
+                    target = parse_qs(parsed.query).get("uddg", [""])[0]
+                    if target:
+                        raw_url = unquote(target)
+                if not raw_url.startswith(("http://", "https://")) or raw_url in seen:
+                    continue
+                host = (urlparse(raw_url).netloc or "").lower()
+                if not host or "bing.com" in host or "duckduckgo.com" in host:
+                    continue
+                title = " ".join(item.get("title", "").split())
+                snippet = " ".join(item.get("snippet", "").split())
+                if not title:
+                    continue
+                seen.add(raw_url)
+                found.append({
+                    "title": title[:240],
+                    "url": raw_url,
+                    "snippet": snippet[:700],
+                })
+                if len(found) >= limit:
+                    return found
+            if found:
+                logging.info("JARVIS search found %s results via %s", len(found), endpoint)
+                return found
+            errors.append(f"{endpoint}: no parseable results")
+        except Exception as error:
+            errors.append(f"{endpoint}: {str(error)[:120]}")
+            logging.warning("JARVIS search endpoint failed (%s): %s", endpoint, error)
+    logging.warning("All free search endpoints failed: %s", " | ".join(errors))
+    return []
 
 
 def ask_openrouter_free(question, sources):
