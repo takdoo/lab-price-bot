@@ -178,5 +178,59 @@ class TelegramTests(unittest.TestCase):
         self.assertEqual(mocked_api.call_args.args[0], "getWebhookInfo")
 
 
+class JarvisTests(unittest.TestCase):
+    @patch.object(bot, "send_jarvis_text")
+    @patch.object(bot, "JARVIS_ADMIN_ID", 5477408842)
+    @patch.object(bot, "CHAT_ID", "@lab_chats")
+    def test_only_admin_can_call_jarvis(self, mocked_send):
+        bot.telegram_chat_id._resolved = -100123
+        normal_user = {
+            "from": {"id": 111111},
+            "chat": {"id": -100123, "type": "supergroup"},
+            "text": "جرویس سلام",
+        }
+        self.assertFalse(bot.handle_jarvis_message(normal_user))
+        mocked_send.assert_not_called()
+
+        admin = {
+            "from": {"id": 5477408842},
+            "chat": {"id": -100123, "type": "supergroup"},
+            "text": "جرویس",
+        }
+        self.assertTrue(bot.handle_jarvis_message(admin))
+        mocked_send.assert_called_once_with(
+            -100123, "بله قربان، در خدمتم. موضوع یا سؤالتون رو بفرمایید."
+        )
+
+    @patch.object(bot, "send_jarvis_text")
+    @patch.object(bot, "JARVIS_ADMIN_ID", 5477408842)
+    def test_jarvis_ignores_admin_messages_without_trigger(self, mocked_send):
+        bot.telegram_chat_id._resolved = -100123
+        admin_message = {
+            "from": {"id": 5477408842},
+            "chat": {"id": -100123, "type": "supergroup"},
+            "text": "سلام گروه",
+        }
+        self.assertFalse(bot.handle_jarvis_message(admin_message))
+        mocked_send.assert_not_called()
+
+    @patch.object(bot.HTTP, "post")
+    @patch.object(bot, "OPENROUTER_API_KEY", "test-key")
+    def test_jarvis_uses_free_router_only(self, mocked_post):
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {
+            "choices": [{"message": {"content": "پاسخ آزمایشی"}}]
+        }
+        mocked_post.return_value = response
+        answer = bot.ask_openrouter_free("LAB چیست؟", [
+            {"title": "منبع", "url": "https://example.com", "snippet": "متن منبع"}
+        ])
+        self.assertEqual(answer, "پاسخ آزمایشی")
+        payload = mocked_post.call_args.kwargs["json"]
+        self.assertEqual(payload["model"], "openrouter/free")
+        self.assertIn("openrouter.ai/api/v1/chat/completions", mocked_post.call_args.args[0])
+
+
 if __name__ == "__main__":
     unittest.main()
