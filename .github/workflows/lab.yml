@@ -46,12 +46,9 @@ jobs:
       - name: Validate required secrets
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          MESSAGE_ID: ${{ secrets.MESSAGE_ID }}
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
         run: |
           test -n "$BOT_TOKEN" || { echo "::error::BOT_TOKEN is missing"; exit 1; }
-          test -n "$MESSAGE_ID" || { echo "::error::MESSAGE_ID is missing"; exit 1; }
-          case "$MESSAGE_ID" in *[!0-9]*) echo "::error::MESSAGE_ID must be numeric"; exit 1;; esac
           test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
 
       - name: Validate Python syntax
@@ -60,11 +57,10 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
-      - name: Update LAB price and Telegram message
+      - name: Send new LAB price message
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
-          MESSAGE_ID: ${{ secrets.MESSAGE_ID }}
         run: |
           for attempt in 1 2 3; do
             echo "Price update attempt $attempt/3"
