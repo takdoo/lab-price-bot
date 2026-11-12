@@ -12,7 +12,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 
 CONTRACT = "0x7ec43cf65f1663f820427c62a5780b8f2e25593a"
-PLATFORM = os.getenv("CMC_PLATFORM", "14")
+PLATFORM = os.getenv("CMC_PLATFORM", "bsc")
 CMC_URL = "https://pro-api.coinmarketcap.com/public-api/v1/dex/holders/list"
 STATE_FILE = Path("top_holders.json")
 OUTPUT_FILE = Path("lab_whale_watch.jpg")
