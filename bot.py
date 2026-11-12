@@ -389,39 +389,61 @@ class DuckDuckGoParser(HTMLParser):
 
 
 def google_news_search(query, limit=JARVIS_MAX_SOURCES):
-    """Search Google News RSS without an API key; this covers news, not the full web index."""
-    endpoint = "https://news.google.com/rss/search"
-    params = {"q": query, "hl": "fa", "gl": "IR", "ceid": "IR:fa"}
-    try:
-        response = HTTP.get(
-            endpoint,
-            params=params,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; LAB-JARVIS/2.0)"},
-            timeout=(8, 15),
-        )
-        response.raise_for_status()
-        root = ElementTree.fromstring(response.content)
-        results = []
-        seen = set()
-        for item in root.findall(".//item"):
-            title = (item.findtext("title") or "").strip()
-            url = (item.findtext("link") or "").strip()
-            snippet = (item.findtext("description") or "").strip()
-            if not title or not url or url in seen:
-                continue
-            seen.add(url)
-            results.append({
-                "title": title[:240],
-                "url": url,
-                "snippet": re.sub(r"<[^>]+>", " ", snippet)[:700],
-            })
-            if len(results) >= limit:
-                break
-        logging.info("Google News RSS returned %s results", len(results))
-        return results
-    except Exception as error:
-        logging.warning("Google News RSS failed: %s", error)
-        return []
+    """Search Google News RSS using several locale variants, without an API key."""
+    searches = (
+        {"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+        {"q": query, "hl": "fa", "gl": "IR", "ceid": "IR:fa"},
+        {"q": query},
+    )
+    endpoints = (
+        "https://news.google.com/rss/search",
+        "https://news.google.com/rss/search",
+        "https://news.google.com/rss/search",
+    )
+    errors = []
+    results = []
+    seen = set()
+    for endpoint, params in zip(endpoints, searches):
+        try:
+            response = HTTP.get(
+                endpoint,
+                params=params,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+                    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+                    "Accept-Language": "en-US,en;q=0.9,fa;q=0.7",
+                },
+                timeout=(10, 20),
+            )
+            response.raise_for_status()
+            root = ElementTree.fromstring(response.content)
+            items = root.findall(".//item")
+            if not items:
+                items = root.findall(".//{*}item")
+            for item in items:
+                title = (item.findtext("title") or "").strip()
+                url = (item.findtext("link") or "").strip()
+                snippet = (item.findtext("description") or "").strip()
+                if not title or not url or url in seen:
+                    continue
+                seen.add(url)
+                results.append({
+                    "title": title[:240],
+                    "url": url,
+                    "snippet": re.sub(r"<[^>]+>", " ", snippet)[:700],
+                })
+                if len(results) >= limit:
+                    break
+            if results:
+                logging.info("Google News RSS returned %s results using locale %s",
+                             len(results), params.get("hl", "default"))
+                return results[:limit]
+            errors.append(f"Google News RSS {params.get('hl', 'default')}: feed contained no items")
+        except Exception as error:
+            errors.append(f"Google News RSS {params.get('hl', 'default')}: {type(error).__name__}: {str(error)[:160]}")
+            logging.warning("Google News RSS attempt failed: %s", errors[-1])
+    logging.warning("All Google News RSS variants failed: %s", " | ".join(errors))
+    return []
 
 
 def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
