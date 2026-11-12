@@ -252,9 +252,11 @@ def make_caption(price, change, history=None):
         f"📊 تغییر ۲۴ ساعته: <b>{change_text}</b>  |  {status}\n\n"
         "🗣️ <b>حرفِ بازار به زبون خودمونی:</b>\n"
         f"{comment}\n\n"
-        f"📅 {date_text}  |  🕒 ساعت ایران {time_text}\n"
+        f"📅 تاریخ: {date_text}\n"
+        f"🕒 ساعت ایران: {time_text}\n"
         "🔄 بروزرسانی خودکار هر ۵ دقیقه\n"
-        "👨‍💻 طراح: علی حامدی  |  👥 @lab_chats"
+        "👨‍💻 طراح: علی حامدی\n"
+        "👥 @lab_chats"
     )
 
 
