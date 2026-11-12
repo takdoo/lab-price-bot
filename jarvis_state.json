@@ -1,5 +1,11 @@
 {
-  "jarvis_message_ids": [],
+  "jarvis_message_ids": [
+    7573,
+    7575,
+    7576,
+    7578,
+    7581
+  ],
   "original_chat_permissions": null,
   "group_locked": false
 }
