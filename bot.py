@@ -262,10 +262,15 @@ def make_caption(price, change, history=None):
 def telegram_api(method, payload=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
     response = HTTP.post(url, json=payload or {}, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    result = response.json()
-    if not result.get("ok"):
-        raise RuntimeError(f"Telegram {method} failed: {result.get('description', 'unknown error')}")
+    try:
+        result = response.json()
+    except ValueError:
+        response.raise_for_status()
+        raise RuntimeError(f"Telegram {method} returned invalid JSON")
+    if not response.ok or not result.get("ok"):
+        description = result.get("description", "unknown error")
+        error_code = result.get("error_code", response.status_code)
+        raise RuntimeError(f"Telegram {method} failed ({error_code}): {description}")
     return result.get("result")
 
 
@@ -352,6 +357,10 @@ def cleanup_telegram_service_messages():
             {"chat_id": target_chat_id, "user_id": bot_id},
         ) or {}
         status = member.get("status")
+        logging.info(
+            "Telegram cleanup permissions: chat_type=%s bot_status=%s can_delete_messages=%s",
+            chat_type, status, member.get("can_delete_messages"),
+        )
         can_delete = (
             status == "creator"
             or member.get("can_delete_messages") is True
