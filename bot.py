@@ -507,7 +507,7 @@ def send_jarvis_text(chat_id, text):
 
 def normalize_jarvis_command(value):
     value = (value or "").strip().lower().replace("ي", "ی").replace("ك", "ک")
-    return re.sub(r"[\\s\\u200c\\u200f]+", " ", value).strip()
+    return re.sub(r"[\s\u200c\u200f]+", " ", value).strip()
 
 
 def jarvis_admin_command(question, chat_id):
