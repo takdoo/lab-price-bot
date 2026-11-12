@@ -84,23 +84,24 @@ class RenderingTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
-    @patch.object(bot, "MESSAGE_ID", "12345")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
     @patch.object(bot.HTTP, "post")
-    def test_edit_message_succeeds(self, mocked_post):
+    def test_new_photo_message_succeeds(self, mocked_post):
         response = Mock()
-        response.json.return_value = {"ok": True, "result": {"message_id": 12345}}
+        response.json.return_value = {"ok": True, "result": {"message_id": 67890}}
         mocked_post.return_value = response
         with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
             bot.send_to_telegram("image.jpg", "caption")
         self.assertEqual(mocked_post.call_count, 1)
-        self.assertIn("editMessageMedia", mocked_post.call_args.args[0])
+        self.assertIn("/sendPhoto", mocked_post.call_args.args[0])
+        self.assertEqual(mocked_post.call_args.kwargs["data"]["chat_id"], "@lab_chats")
+        self.assertEqual(mocked_post.call_args.kwargs["data"]["caption"], "caption")
 
-    @patch.object(bot, "MESSAGE_ID", "")
     @patch.object(bot, "BOT_TOKEN", "test-token")
-    def test_missing_message_id_fails_before_network(self):
-        with self.assertRaisesRegex(ValueError, "MESSAGE_ID"):
+    @patch.object(bot, "CHAT_ID", "")
+    def test_missing_chat_id_fails_before_network(self):
+        with self.assertRaisesRegex(ValueError, "CHAT_ID"):
             bot.send_to_telegram("image.jpg", "caption")
 
 
