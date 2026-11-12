@@ -16,6 +16,7 @@ PLATFORM = os.getenv("CMC_PLATFORM", "BNB Smart Chain")
 CMC_URL = "https://pro-api.coinmarketcap.com/public-api/v1/dex/holders/list"
 STATE_FILE = Path("top_holders.json")
 OUTPUT_FILE = Path("lab_whale_watch.jpg")
+STATUS_OUTPUT_FILE = Path("lab_whale_status.jpg")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("CHAT_ID", "@lab_chats").strip()
 ALERT_THRESHOLD = Decimal(os.getenv("WHALE_ALERT_LAB", "1000000"))
@@ -234,6 +235,46 @@ def send_to_telegram(image_path, changes):
     logging.info("گزارش تغییر کیف پول‌ها در گروه ارسال شد")
 
 
+def create_status_graphic(changes, first_run=False):
+    width, height = 1200, 900
+    image = Image.new("RGB", (width, height), "#07111F")
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((24, 24, width - 24, height - 24), radius=42, fill="#101D30", outline="#29415F", width=3)
+    draw.rounded_rectangle((55, 55, width - 55, 250), radius=32, fill="#172B45")
+    rtl_text(draw, (width - 90, 120), "دیده‌بان نهنگ‌های LAB", get_font(62, True), "#F5F8FF")
+    rtl_text(draw, (width - 90, 195), "گزارش زنده ۱۰ کیف پول برتر", get_font(32), "#AFC4DE")
+    date_text, time_text = iran_time()
+    draw.text((90, 215), f"{fa_digits(date_text)}  |  {fa_digits(time_text)}", font=get_font(24), fill="#AFC4DE", anchor="ls")
+
+    balance_changes = sum(1 for item in changes if item["delta"] is not None and item["delta"] != 0)
+    rank_changes = sum(1 for item in changes if item["old_rank"] != item["new_rank"])
+    if first_run:
+        headline, detail, accent = "نقطه شروع ثبت شد", "از بررسی بعدی، تغییرات با این آمار مقایسه می‌شوند", "#F4C66A"
+    elif not changes:
+        headline, detail, accent = "فعلاً تغییری ثبت نشده", "موجودی و رتبه ۱۰ کیف پول برتر ثابت مانده است", "#29E69A"
+    else:
+        headline, detail, accent = "تغییر در کیف پول‌ها شناسایی شد", "جزئیات تغییرات در پیام هشدار جداگانه ارسال شده است", "#F4C66A"
+
+    draw.rounded_rectangle((70, 300, width - 70, 500), radius=30, fill="#14283B", outline=accent, width=3)
+    rtl_text(draw, (width - 105, 375), headline, get_font(43, True), accent)
+    rtl_text(draw, (width - 105, 445), detail, get_font(26), "#D5E2F1")
+
+    cards = [
+        (75, 550, 555, 730, "#17352F", "#29E69A", fa_digits(balance_changes), "تغییر موجودی"),
+        (645, 550, 1125, 730, "#302A20", "#F4C66A", fa_digits(rank_changes), "تغییر رتبه"),
+    ]
+    for x1, y1, x2, y2, panel, accent_color, number, label in cards:
+        draw.rounded_rectangle((x1, y1, x2, y2), radius=28, fill=panel, outline=accent_color, width=2)
+        draw.text(((x1 + x2) // 2, y1 + 70), number, font=get_font(58, True), fill=accent_color, anchor="mm")
+        draw.text(((x1 + x2) // 2, y1 + 140), label, font=get_font(28, True), fill="#E7EEF8", anchor="mm")
+
+    draw.line((80, 785, width - 80, 785), fill="#2A3D55", width=2)
+    rtl_text(draw, (width - 90, 830), "هر ۵ دقیقه یک‌بار بررسی می‌شود", get_font(25), "#AFC4DE")
+    draw.text((90, 830), "BSC  •  LAB", font=get_font(22, True), fill="#29E69A", anchor="ls")
+    image.save(STATUS_OUTPUT_FILE, "JPEG", quality=95, optimize=True)
+    return STATUS_OUTPUT_FILE
+
+
 def send_status(changes, previous_message_id=None, first_run=False):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
@@ -242,34 +283,33 @@ def send_status(changes, previous_message_id=None, first_run=False):
     rank_changes = sum(1 for item in changes if item["old_rank"] != item["new_rank"])
     if first_run:
         status_line = "نقطه شروع ثبت شد؛ از بررسی بعدی تغییرات قابل مقایسه‌اند."
-        status_emoji = "🟡"
     elif not changes:
         status_line = "هیچ تغییری در موجودی یا رتبه ۱۰ کیف پول برتر ثبت نشد."
-        status_emoji = "🟢"
     else:
         status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
-        status_emoji = "🟠"
-    message = (
-        f"<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\n"
-        f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
-        f"🔍 بررسی: <b>۱۰ کیف پول برتر</b>\n"
-        f"{status_emoji} {status_line}\n"
-        "⏱ بررسی بعدی حدود ۵ دقیقه دیگر\n"
+    caption = (
+        "<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\\n"
+        f"📅 {date_text} | 🕒 {time_text} (ایران)\\n"
+        f"🔎 {status_line}\\n"
+        "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\\n"
         "👥 @lab_chats"
     )
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    response = requests.post(
-        url,
-        data={"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": "true"},
-        timeout=TIMEOUT,
-    )
+    image_path = create_status_graphic(changes, first_run=first_run)
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    with open(image_path, "rb") as photo:
+        response = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            files={"photo": photo},
+            timeout=TIMEOUT,
+        )
     response.raise_for_status()
     result = response.json()
     if not result.get("ok"):
-        raise RuntimeError(f"Telegram sendMessage failed: {result.get('description')}")
+        raise RuntimeError(f"Telegram status sendPhoto failed: {result.get('description')}")
     new_message_id = result["result"]["message_id"]
 
-    # Keep only the newest periodic status post. Change-alert photo posts remain untouched.
+    # Delete only the previous periodic status post; separate whale alerts remain in the group.
     if previous_message_id:
         delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
         try:
@@ -284,7 +324,6 @@ def send_status(changes, previous_message_id=None, first_run=False):
         except requests.RequestException as exc:
             logging.warning("حذف پیام وضعیت قبلی ناموفق بود: %s", exc)
     return new_message_id
-
 
 def save_state(holders, status_message_id):
     payload = {
