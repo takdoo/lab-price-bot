@@ -53,6 +53,11 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Load persistent JARVIS state
+        run: |
+          git fetch origin refs/heads/lab-jarvis-state:refs/remotes/origin/lab-jarvis-state
+          git show origin/lab-jarvis-state:jarvis_state.json > jarvis_state.json
+
       - name: Send new LAB price message
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -60,6 +65,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JARVIS_ADMIN_ID: "5477408842"
           JARVIS_LISTEN_SECONDS: "240"
+          JARVIS_STATE_FILE: "jarvis_state.json"
         run: |
           for attempt in 1 2 3; do
             echo "Price update attempt $attempt/3"
@@ -70,3 +76,18 @@ jobs:
           done
           echo "::error::LAB price update failed after 3 attempts"
           exit 1
+
+      - name: Save persistent JARVIS state
+        if: always()
+        run: |
+          git worktree add /tmp/lab-jarvis-state origin/lab-jarvis-state
+          cp jarvis_state.json /tmp/lab-jarvis-state/jarvis_state.json
+          git -C /tmp/lab-jarvis-state config user.name "github-actions[bot]"
+          git -C /tmp/lab-jarvis-state config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/lab-jarvis-state add jarvis_state.json
+          if ! git -C /tmp/lab-jarvis-state diff --cached --quiet; then
+            git -C /tmp/lab-jarvis-state commit -m "Update persistent JARVIS state"
+            git -C /tmp/lab-jarvis-state push origin HEAD:lab-jarvis-state
+          else
+            echo "JARVIS state unchanged."
+          fi
