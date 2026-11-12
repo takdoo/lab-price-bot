@@ -47,19 +47,47 @@ def iran_time():
 
 
 def fetch_holders():
-    response = requests.post(
-        CMC_URL,
-        json={"tokenAddress": CONTRACT, "platform": PLATFORM, "tag": "tag_all"},
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        timeout=TIMEOUT,
-    )
-    if not response.ok:
-        detail = response.text[:1200].replace("\\n", " ")
-        raise RuntimeError(f"CoinMarketCap HTTP {response.status_code}: {detail}")
-    payload = response.json()
-    status = payload.get("status") or {}
-    if status.get("error_code") not in (None, 0):
-        raise RuntimeError(f"CoinMarketCap error {status.get('error_code')}: {status.get('error_message')}")
+    # The holders/list endpoint expects a platform name/slug (for example
+    # "ethereum"), not a numeric platform ID. Try the BNB slug first and
+    # retain explicit fallbacks for CMC's alternate platform representations.
+    configured = PLATFORM.strip()
+    candidates = []
+    for candidate in (configured, "bsc", "BNB Smart Chain", "bnb-smart-chain", "14"):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    payload = None
+    failures = []
+    for platform in candidates:
+        response = requests.post(
+            CMC_URL,
+            json={"tokenAddress": CONTRACT, "platform": platform, "tag": "tag_all"},
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=TIMEOUT,
+        )
+        if not response.ok:
+            detail = response.text[:1200].replace("\\n", " ")
+            failures.append(f"{platform}: HTTP {response.status_code} {detail}")
+            # Only retry a parameter-format rejection. Other HTTP errors
+            # (rate limits, server failures, auth) should fail immediately.
+            if response.status_code == 400 and "Parameter error" in response.text:
+                continue
+            raise RuntimeError(f"CoinMarketCap request failed for platform {platform}: {failures[-1]}")
+        candidate_payload = response.json()
+        status = candidate_payload.get("status") or {}
+        if status.get("error_code") not in (None, 0):
+            error = f"{platform}: CMC {status.get('error_code')} {status.get('error_message')}"
+            failures.append(error)
+            if str(status.get("error_code")) in {"400", "1001"}:
+                continue
+            raise RuntimeError(error)
+        payload = candidate_payload
+        logging.info("CoinMarketCap platform accepted: %s", platform)
+        break
+
+    if payload is None:
+        raise RuntimeError("CoinMarketCap rejected all BNB platform formats: " + " | ".join(failures))
+
     data = payload.get("data") or {}
     rows = data.get("holders") if isinstance(data, dict) else None
     if not isinstance(rows, list):
