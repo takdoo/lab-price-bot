@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
+<defs>
+ <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#020812"/><stop offset=".48" stop-color="#071525"/><stop offset="1" stop-color="#03050d"/></linearGradient>
+ <linearGradient id="edge" x2="1" y2="1"><stop stop-color="#23e6a0"/><stop offset=".48" stop-color="#55dfff"/><stop offset="1" stop-color="#ff4b5a"/></linearGradient>
+ <linearGradient id="glass" x2="1" y2="1"><stop stop-color="#102b3c" stop-opacity=".88"/><stop offset=".55" stop-color="#07101e" stop-opacity=".92"/><stop offset="1" stop-color="#101327" stop-opacity=".88"/></linearGradient>
+ <radialGradient id="glowG"><stop stop-color="#00e89a" stop-opacity=".24"/><stop offset="1" stop-color="#00e89a" stop-opacity="0"/></radialGradient>
+ <radialGradient id="glowR"><stop stop-color="#ff304f" stop-opacity=".2"/><stop offset="1" stop-color="#ff304f" stop-opacity="0"/></radialGradient>
+ <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#6bb9d0" stroke-opacity=".12" stroke-width="1"/></pattern>
+ <filter id="blur"><feGaussianBlur stdDeviation="26"/></filter>
+ <filter id="shadow"><feGaussianBlur stdDeviation="8"/></filter>
+</defs>
+<rect width="1536" height="1024" fill="url(#bg)"/>
+<circle cx="180" cy="540" r="410" fill="url(#glowG)"/><circle cx="1370" cy="440" r="440" fill="url(#glowR)"/>
+<rect width="1536" height="1024" fill="url(#grid)" opacity=".58"/>
+<path d="M0 0H1536V1024H0Z" fill="none" stroke="url(#edge)" stroke-width="7" opacity=".82"/>
+<path d="M18 18H1518V1006H18Z" fill="none" stroke="#b8f5ff" stroke-opacity=".18" stroke-width="2"/>
+<!-- ambient market lines -->
+<path d="M35 500L95 470 145 488 195 420 245 448 295 370 345 392 395 330" fill="none" stroke="#23e6a0" stroke-width="4" opacity=".45"/>
+<path d="M1140 320L1195 345 1240 300 1290 365 1340 350 1390 420 1450 395 1500 460" fill="none" stroke="#ff4b5a" stroke-width="4" opacity=".48"/>
+<g opacity=".5" stroke-width="3"><path d="M95 420v90m-12-60h24M165 390v95m-12-55h24M235 350v90m-12-45h24M305 315v110m-12-70h24M1260 280v110m-12-65h24M1330 335v100m-12-60h24M1400 390v100m-12-55h24" stroke="#22e69b"/><path d="M1190 285v100m-12-55h24M1470 410v110m-12-60h24" stroke="#ff5267"/></g>
+<!-- Header -->
+<text x="92" y="135" fill="#f5fbff" font-family="DejaVu Sans,Arial" font-size="92" font-weight="bold" letter-spacing="4">LAB</text>
+<text x="100" y="184" fill="#70d9e8" font-family="DejaVu Sans,Arial" font-size="22" letter-spacing="7">LIVE PRICE • MARKET PULSE</text>
+<path d="M92 210H500" stroke="url(#edge)" stroke-width="3" opacity=".75"/>
+<rect x="1070" y="65" width="380" height="145" rx="28" fill="url(#glass)" stroke="#5de4d3" stroke-opacity=".65" stroke-width="2"/>
+<circle cx="1115" cy="118" r="15" fill="none" stroke="#23e6a0" stroke-width="4"/><path d="M1115 105v14l10 7" fill="none" stroke="#23e6a0" stroke-width="3"/>
+<text x="1150" y="115" fill="#d7f6ff" font-family="DejaVu Sans,Arial" font-size="22">LIVE UPDATE</text>
+<text x="1150" y="158" fill="#7c9eaf" font-family="DejaVu Sans,Arial" font-size="18">IRAN TIME</text>
+<!-- central price glass -->
+<rect x="225" y="250" width="1086" height="345" rx="48" fill="url(#glass)" stroke="url(#edge)" stroke-width="4"/>
+<rect x="239" y="264" width="1058" height="317" rx="38" fill="none" stroke="#d6faff" stroke-opacity=".14" stroke-width="2"/>
+<text x="768" y="315" fill="#7fa7b8" font-family="DejaVu Sans,Arial" font-size="24" letter-spacing="8" text-anchor="middle">LAB / USDT</text>
+<!-- dynamic price and change drawn by bot -->
+<path d="M390 540H1146" stroke="#8cd9e7" stroke-opacity=".22" stroke-width="2"/>
+<!-- statistic cards -->
+<g fill="url(#glass)" stroke="#4bdcc8" stroke-opacity=".48" stroke-width="2">
+ <rect x="255" y="635" width="320" height="120" rx="25"/>
+ <rect x="608" y="635" width="320" height="120" rx="25"/>
+ <rect x="961" y="635" width="320" height="120" rx="25"/>
+</g>
+<g fill="#8bb5c5" font-family="DejaVu Sans,Arial" font-size="20" letter-spacing="2" text-anchor="middle">
+ <text x="415" y="680">24H HIGH</text><text x="768" y="680">24H LOW</text><text x="1121" y="680">DATA SOURCE</text>
+</g>
+<!-- chart panel -->
+<rect x="190" y="790" width="1156" height="130" rx="26" fill="url(#glass)" stroke="#5ccbc8" stroke-opacity=".55" stroke-width="2"/>
+<path d="M225 855H1310M225 885H1310" stroke="#6ab6c8" stroke-opacity=".13" stroke-width="1"/>
+<text x="230" y="825" fill="#a5c5d1" font-family="DejaVu Sans,Arial" font-size="18" letter-spacing="3">24H PRICE MOVEMENT</text>
+<!-- Footer -->
+<text x="95" y="970" fill="#83a6b7" font-family="DejaVu Sans,Arial" font-size="21" letter-spacing="2">TELEGRAM  @lab_chats</text>
+<text x="1440" y="970" fill="#a8f4df" font-family="DejaVu Sans,Arial" font-size="21" text-anchor="end">DESIGNED BY  ALI HAMEDI</text>
+<path d="M95 990H1440" stroke="url(#edge)" stroke-opacity=".55" stroke-width="2"/>
+</svg>
