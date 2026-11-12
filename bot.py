@@ -32,6 +32,7 @@ OPENROUTER_API_KEY = (os.getenv("OPENROUTER_API_KEY") or "").strip()
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "openrouter/free"  # Free-model router only; no paid fallback.
 JARVIS_MAX_SOURCES = 6
+JARVIS_LISTEN_SECONDS = int(os.getenv("JARVIS_LISTEN_SECONDS", "240"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -530,8 +531,8 @@ def telegram_chat_id():
 
 
 
-def cleanup_telegram_service_messages():
-    """Delete Telegram service notices in our group without touching user posts."""
+def cleanup_telegram_service_messages(listen_seconds=0):
+    """Delete service notices and optionally long-poll for JARVIS requests."""
     if not BOT_TOKEN or not CHAT_ID:
         return 0
 
@@ -584,16 +585,27 @@ def cleanup_telegram_service_messages():
         handled_jarvis = 0
         offset = None
         drained = False
+        deadline = time.monotonic() + max(0, int(listen_seconds or 0))
+        batch_count = 0
         # Telegram has one shared update queue. JARVIS and service-message
         # cleanup intentionally share this single consumer to avoid poller races.
-        for _ in range(10):
-            payload = {"limit": 100, "timeout": 0}
+        # During the listen window, long-poll for up to 20 seconds at a time.
+        while True:
+            remaining = deadline - time.monotonic() if listen_seconds else 0
+            if listen_seconds and remaining > 0:
+                poll_timeout = min(20, max(1, int(remaining)))
+            else:
+                poll_timeout = 0
+            payload = {"limit": 100, "timeout": poll_timeout}
             if offset is not None:
                 payload["offset"] = offset
             updates = telegram_api("getUpdates", payload) or []
             if not updates:
+                if listen_seconds and time.monotonic() < deadline:
+                    continue
                 drained = True
                 break
+            batch_count += 1
 
             for update in updates:
                 message = (update or {}).get("message")
@@ -630,11 +642,13 @@ def cleanup_telegram_service_messages():
                     )
 
             offset = max(item["update_id"] for item in updates) + 1
-
-        if offset is not None and not drained:
-            # Acknowledge the final batch. Any newer updates returned here remain
-            # pending and are handled by the next five-minute run.
-            telegram_api("getUpdates", {"offset": offset, "limit": 1, "timeout": 0})
+            # If the listen window expired, finish draining non-blockingly so the
+            # last batch is acknowledged without discarding a newly arrived update.
+            if not listen_seconds and batch_count >= 10:
+                break
+            if listen_seconds and time.monotonic() >= deadline and batch_count >= 100:
+                logging.warning("JARVIS polling stopped after 100 update batches")
+                break
 
         if handled_jarvis:
             logging.info("تعداد %s درخواست جرویس پردازش شد", handled_jarvis)
@@ -755,7 +769,7 @@ def send_to_telegram(image_path, caption):
 
 def main():
     logging.info("ربات قیمت LAB و جرویس شروع به کار کرد")
-    # Poll first, so a temporary price-feed failure cannot block JARVIS.
+    # Drain queued messages first, so a temporary price-feed failure cannot block JARVIS.
     cleanup_telegram_service_messages()
     price, change = get_market_data()
 
@@ -768,6 +782,10 @@ def main():
     image_path = create_image(price, change, history)
     send_to_telegram(image_path, make_caption(price, change, history))
     logging.info("قیمت LAB: %.5f | تغییر ۲۴ ساعته: %s", price, "نامشخص" if change is None else f"{change:.2f}%")
+    # Keep this free public-repository runner listening between price updates.
+    # This uses the same single Telegram getUpdates consumer, not a second poller.
+    if JARVIS_LISTEN_SECONDS > 0:
+        cleanup_telegram_service_messages(listen_seconds=JARVIS_LISTEN_SECONDS)
 
 
 if __name__ == "__main__":
