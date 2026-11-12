@@ -418,7 +418,9 @@ def ask_openrouter_free(question, sources):
             {
                 "role": "system",
                 "content": (
-                    "تو جرویس، دستیار فارسی‌زبان گروه تلگرام LAB هستی. "
+                    "تو جرویس، دستیار فارسی‌زبان گروه تلگرام LAB هستی و سازنده‌ات علی حامدی است. "
+                    "اگر از خالق، سازنده یا پدیدآورنده‌ات پرسیدند، دقیقاً بگو: علی حامدی خالق من است. "
+                    "با مدیر گروه مؤدبانه و با خطاب قربان صحبت کن. "
                     "فقط بر اساس منابعی که در پیام کاربر آمده پاسخ بده؛ "
                     "اگر منابع کافی نیستند صریح بگو. واقعیت، برداشت و احتمال را جدا کن. "
                     "قیمت یا خبر لحظه‌ای را بدون منبع قطعی اعلام نکن. "
@@ -461,12 +463,172 @@ def ask_openrouter_free(question, sources):
     return answer[:3600]
 
 
+JARVIS_STATE_FILE = os.getenv("JARVIS_STATE_FILE", "jarvis_state.json")
+JARVIS_CREATOR = "علی حامدی"
+
+
+def load_jarvis_state():
+    try:
+        with open(JARVIS_STATE_FILE, "r", encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        if not isinstance(state, dict):
+            raise ValueError("ساختار فایل وضعیت جرویس نامعتبر است")
+    except FileNotFoundError:
+        state = {}
+    state.setdefault("jarvis_message_ids", [])
+    state.setdefault("original_chat_permissions", None)
+    state.setdefault("group_locked", False)
+    return state
+
+
+def save_jarvis_state(state):
+    temporary = JARVIS_STATE_FILE + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as state_file:
+        json.dump(state, state_file, ensure_ascii=False, indent=2)
+        state_file.write("\\n")
+    os.replace(temporary, JARVIS_STATE_FILE)
+
+
 def send_jarvis_text(chat_id, text):
-    telegram_api("sendMessage", {
+    result = telegram_api("sendMessage", {
         "chat_id": chat_id,
         "text": text[:3900],
         "disable_web_page_preview": True,
-    })
+    }) or {}
+    message_id = result.get("message_id")
+    if message_id:
+        state = load_jarvis_state()
+        ids = state.get("jarvis_message_ids") or []
+        ids.append(int(message_id))
+        state["jarvis_message_ids"] = ids[-100:]
+        save_jarvis_state(state)
+    return result
+
+
+def normalize_jarvis_command(value):
+    value = (value or "").strip().lower().replace("ي", "ی").replace("ك", "ک")
+    return re.sub(r"[\\s\\u200c\\u200f]+", " ", value).strip()
+
+
+def jarvis_admin_command(question, chat_id):
+    command = normalize_jarvis_command(question)
+    state = load_jarvis_state()
+
+    if command in {
+        "کی خالقت هست", "کی خالقته", "خالق تو کیه", "سازنده تو کیه",
+        "تو رو کی ساخته", "خالق من کیه", "کی ساختت",
+    }:
+        send_jarvis_text(chat_id, f"قربان، خالق و سازنده من {JARVIS_CREATOR} هست.")
+        return True
+
+    if command in {"راهنما", "کمک", "چه کارهایی بلدی", "امکاناتت چیه", "دستورات"}:
+        send_jarvis_text(chat_id, (
+            "🤖 راهنمای جرویس | فقط مدیر گروه\\n\\n"
+            "🔎 جرویس [سؤال] — جست‌وجو و پاسخ با لینک منابع\\n"
+            "🧹 جرویس پیام‌های خودتو پاک کن — حذف پاسخ‌های قبلی خود جرویس\\n"
+            "🔒 جرویس قفل گروه — بستن ارسال پیام اعضای عادی\\n"
+            "🔓 جرویس باز کردن گروه — بازگرداندن مجوزهای قبلی گروه\\n"
+            "👤 جرویس خالقته کیه — معرفی سازنده\\n"
+            "🛡️ جرویس دسترسی‌هام چیه — گزارش دسترسی‌های واقعی ربات\\n"
+            "📈 جرویس وضعیت — وضعیت قیمت و امکانات ربات در حد داده‌های در دسترس\\n\\n"
+            "من فقط با شناسه عددی مدیر پاسخ می‌دهم؛ دستورهای مدیریتی هم فقط از مدیر پذیرفته می‌شوند."
+        ))
+        return True
+
+    if command in {"پیام های خودتو پاک کن", "پیام‌های خودتو پاک کن",
+                   "پیام های قبلی خودتو پاک کن", "پیام‌های قبلی خودتو پاک کن",
+                   "پیام های خودت رو پاک کن", "پیام‌های خودت رو پاک کن",
+                   "پاک کن پیام های خودتو", "پاک کن پیام‌های خودتو"}:
+        member = telegram_api("getChatMember", {"chat_id": chat_id, "user_id": telegram_api("getMe")["id"]}) or {}
+        if member.get("status") != "creator" and member.get("can_delete_messages") is not True:
+            send_jarvis_text(chat_id, "برای پاک کردن پیام‌های قبلی خودم، باید دسترسی حذف پیام‌ها داشته باشم.")
+            return True
+        message_ids = list(state.get("jarvis_message_ids") or [])
+        deleted = 0
+        failed = 0
+        for message_id in message_ids:
+            try:
+                telegram_api("deleteMessage", {"chat_id": chat_id, "message_id": int(message_id)})
+                deleted += 1
+            except Exception:
+                failed += 1
+        state["jarvis_message_ids"] = []
+        save_jarvis_state(state)
+        send_jarvis_text(chat_id, f"🧹 پاکسازی انجام شد؛ {deleted} پیام جرویس حذف شد."
+                         + (f"\\n{failed} پیام هم به‌دلیل محدودیت تلگرام حذف نشد." if failed else ""))
+        return True
+
+    if command in {"قفل گروه", "گروه رو قفل کن", "گروه را قفل کن", "قفلش کن"}:
+        member = telegram_api("getChatMember", {"chat_id": chat_id, "user_id": telegram_api("getMe")["id"]}) or {}
+        if member.get("status") != "creator" and member.get("can_restrict_members") is not True:
+            send_jarvis_text(chat_id, "برای قفل کردن گروه باید دسترسی محدود کردن اعضا (Restrict Members) داشته باشم.")
+            return True
+        if state.get("group_locked"):
+            send_jarvis_text(chat_id, "گروه از قبل قفل شده؛ برای باز کردنش بگو «جرویس باز کردن گروه».")
+            return True
+        chat = telegram_api("getChat", {"chat_id": chat_id}) or {}
+        original = chat.get("permissions")
+        if not isinstance(original, dict):
+            send_jarvis_text(chat_id, "نتونستم مجوزهای فعلی گروه رو بخونم؛ برای جلوگیری از تغییر ناخواسته، قفل نکردم.")
+            return True
+        locked = {key: False for key in (
+            "can_send_messages", "can_send_audios", "can_send_documents",
+            "can_send_photos", "can_send_videos", "can_send_video_notes",
+            "can_send_voice_notes", "can_send_polls", "can_send_other_messages",
+            "can_add_web_page_previews",
+        )}
+        telegram_api("setChatPermissions", {"chat_id": chat_id, "permissions": locked})
+        state["original_chat_permissions"] = original
+        state["group_locked"] = True
+        save_jarvis_state(state)
+        send_jarvis_text(chat_id, "🔒 گروه قفل شد. اعضای عادی فعلاً نمی‌تونن پیام بفرستن؛ مدیرها همچنان دسترسی مدیریتی خودشون رو دارن.")
+        return True
+
+    if command in {"باز کردن گروه", "گروه رو باز کن", "گروه را باز کن", "رفع قفل گروه", "آنلاک گروه"}:
+        member = telegram_api("getChatMember", {"chat_id": chat_id, "user_id": telegram_api("getMe")["id"]}) or {}
+        if member.get("status") != "creator" and member.get("can_restrict_members") is not True:
+            send_jarvis_text(chat_id, "برای باز کردن گروه باید دسترسی محدود کردن اعضا (Restrict Members) داشته باشم.")
+            return True
+        original = state.get("original_chat_permissions")
+        if not state.get("group_locked") or not isinstance(original, dict):
+            send_jarvis_text(chat_id, "وضعیت قفل ذخیره‌شده‌ای ندارم؛ برای اینکه مجوزهای گروه رو حدس نزنم، تغییری ندادم.")
+            return True
+        telegram_api("setChatPermissions", {"chat_id": chat_id, "permissions": original})
+        state["group_locked"] = False
+        state["original_chat_permissions"] = None
+        save_jarvis_state(state)
+        send_jarvis_text(chat_id, "🔓 گروه باز شد و مجوزهای قبلی اعضا برگشت.")
+        return True
+
+    if command in {"دسترسی هام چیه", "دسترسی‌هام چیه", "چه دسترسی هایی داری",
+                   "چه دسترسی‌هایی داری", "گزارش دسترسی", "دسترسی هات"}:
+        member = telegram_api("getChatMember", {"chat_id": chat_id, "user_id": telegram_api("getMe")["id"]}) or {}
+        can_delete = member.get("status") == "creator" or member.get("can_delete_messages") is True
+        can_restrict = member.get("status") == "creator" or member.get("can_restrict_members") is True
+        can_pin = member.get("status") == "creator" or member.get("can_pin_messages") is True
+        lines = [
+            "🛡️ دسترسی‌های فعلی جرویس در گروه:",
+            f"• ارسال پیام و پاسخ: بله",
+            f"• حذف پیام‌های خودش: {'بله' if can_delete else 'خیر؛ نیازمند Delete Messages'}",
+            f"• قفل و باز کردن گروه: {'بله' if can_restrict else 'خیر؛ نیازمند Restrict Members'}",
+            f"• سنجاق پیام: {'بله' if can_pin else 'خیر؛ نیازمند Pin Messages'}",
+            "• مدیریت کیف‌پول‌های LAB: فقط گزارش و بررسی؛ بدون دسترسی به کیف پول یا انتقال دارایی",
+            "• وب‌گردی و پاسخ هوشمند: از جست‌وجوی عمومی و مدل رایگان؛ ممکن است سهمیه رایگان محدود شود",
+            "• دسترسی به پیام‌های قدیمی گروه: خیر؛ فقط پیام‌هایی که تلگرام به ربات تحویل می‌دهد",
+            "• پاسخ به اعضای دیگر: خیر؛ فقط مدیر مجاز است",
+        ]
+        send_jarvis_text(chat_id, "\\n".join(lines))
+        return True
+
+    if command in {"وضعیت", "وضعیت ربات", "وضعیت جرویس"}:
+        send_jarvis_text(chat_id, (
+            "📊 وضعیت جرویس: فعال در اجرای زمان‌بندی‌شده گیت‌هاب؛ "
+            "پاسخ‌گویی به پیام مدیر، جست‌وجوی وب و دستورات مدیریتی مجاز. "
+            "مدل هوش مصنوعی فقط از مسیر رایگان استفاده می‌کند."
+        ))
+        return True
+
+    return False
 
 
 def handle_jarvis_message(message, bot_username=None):
@@ -498,6 +660,8 @@ def handle_jarvis_message(message, bot_username=None):
 
     question = text[match.end():].strip()
     chat_id = chat.get("id")
+    if question and jarvis_admin_command(question, chat_id):
+        return True
     if not question:
         send_jarvis_text(chat_id, "بله قربان، در خدمتم. موضوع یا سؤالتون رو بفرمایید.")
         return True
@@ -786,6 +950,8 @@ def main():
     # This uses the same single Telegram getUpdates consumer, not a second poller.
     if JARVIS_LISTEN_SECONDS > 0:
         cleanup_telegram_service_messages(listen_seconds=JARVIS_LISTEN_SECONDS)
+    # Persist JARVIS message IDs and reversible group-lock settings between runs.
+    save_jarvis_state(load_jarvis_state())
 
 
 if __name__ == "__main__":
