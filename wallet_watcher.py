@@ -12,7 +12,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 
 CONTRACT = "0x7ec43cf65f1663f820427c62a5780b8f2e25593a"
-PLATFORM = os.getenv("CMC_PLATFORM", "BNB Smart Chain")
+PLATFORM = os.getenv("CMC_PLATFORM", "14")
 CMC_URL = "https://pro-api.coinmarketcap.com/public-api/v1/dex/holders/list"
 STATE_FILE = Path("top_holders.json")
 OUTPUT_FILE = Path("lab_whale_watch.jpg")
@@ -53,7 +53,9 @@ def fetch_holders():
         headers={"Accept": "application/json", "Content-Type": "application/json"},
         timeout=TIMEOUT,
     )
-    response.raise_for_status()
+    if not response.ok:
+        detail = response.text[:1200].replace("\\n", " ")
+        raise RuntimeError(f"CoinMarketCap HTTP {response.status_code}: {detail}")
     payload = response.json()
     status = payload.get("status") or {}
     if status.get("error_code") not in (None, 0):
