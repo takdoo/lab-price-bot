@@ -1,6 +1,12 @@
 name: LAB Whale Watcher
 
 on:
+  push:
+    paths:
+      - 'wallet_watcher.py'
+      - 'tests/**'
+      - '.github/workflows/lab-whale-watch.yml'
+      - 'requirements.txt'
   workflow_dispatch:
   repository_dispatch:
     types: [lab-price-update]
