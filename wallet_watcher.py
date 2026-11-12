@@ -149,7 +149,7 @@ def rtl_text(draw, xy, text, font, fill, anchor="ra"):
 
 
 def create_graphic(changes):
-    width, height = 1200, 1500
+    width, height = 1200, 1700
     image = Image.new("RGB", (width, height), "#0B1220")
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((28, 28, width - 28, height - 28), radius=38, fill="#111C2E", outline="#263B56", width=3)
@@ -249,7 +249,8 @@ def main():
         send_to_telegram(image_path, changes)
     else:
         logging.info("هیچ تغییر واقعی در موجودی یا رتبه ۱۰ هولدر برتر دیده نشد؛ پیامی ارسال نمی‌شود")
-    save_state(current)
+    if changes:
+        save_state(current)
 
 
 if __name__ == "__main__":
