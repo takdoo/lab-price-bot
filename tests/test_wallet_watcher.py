@@ -65,7 +65,7 @@ class CompareTopHoldersTests(unittest.TestCase):
             text = ""
 
             def json(self):
-                return {"status": {"error_code": 0}, "data": {"holders": rows}}
+                return {"status": {"error_code": "0"}, "data": {"holders": rows}}
 
         mocked_post.return_value = FakeResponse()
         holders = fetch_holders()
