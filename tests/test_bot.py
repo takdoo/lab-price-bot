@@ -179,6 +179,23 @@ class TelegramTests(unittest.TestCase):
 
 
 class JarvisTests(unittest.TestCase):
+    @patch.object(bot.HTTP, "get")
+    def test_google_news_search_parses_rss_results(self, mocked_get):
+        response = Mock()
+        response.content = (
+            b'<?xml version="1.0"?><rss><channel><item>'
+            b'<title>Bitcoin latest news</title>'
+            b'<link>https://example.com/bitcoin</link>'
+            b'<description>Market update</description>'
+            b'</item></channel></rss>'
+        )
+        response.raise_for_status.return_value = None
+        mocked_get.return_value = response
+        results = bot.google_news_search("Bitcoin", limit=3)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "Bitcoin latest news")
+        self.assertEqual(results[0]["url"], "https://example.com/bitcoin")
+
     @patch.object(bot, "send_jarvis_text")
     @patch.object(bot, "JARVIS_ADMIN_ID", 5477408842)
     @patch.object(bot, "CHAT_ID", "@lab_chats")
