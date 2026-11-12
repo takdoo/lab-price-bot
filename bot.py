@@ -365,6 +365,7 @@ def cleanup_telegram_service_messages():
 
         deleted_count = 0
         offset = None
+        drained = False
         # Drain queued updates in bounded batches. A final offset call confirms
         # the last batch, so already handled updates are not processed again.
         for _ in range(10):
@@ -373,6 +374,7 @@ def cleanup_telegram_service_messages():
                 payload["offset"] = offset
             updates = telegram_api("getUpdates", payload) or []
             if not updates:
+                drained = True
                 break
 
             for update in updates:
@@ -402,7 +404,7 @@ def cleanup_telegram_service_messages():
 
             offset = max(item["update_id"] for item in updates) + 1
 
-        if offset is not None:
+        if offset is not None and not drained:
             # Acknowledge the final batch. Any newer updates returned here remain
             # pending and are handled by the next five-minute run.
             telegram_api("getUpdates", {"offset": offset, "limit": 1, "timeout": 0})
