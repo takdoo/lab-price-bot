@@ -84,6 +84,7 @@ class RenderingTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
+    @patch.object(bot, "cleanup_telegram_service_messages")
     @patch.object(bot, "telegram_api")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
@@ -126,6 +127,54 @@ class TelegramTests(unittest.TestCase):
             bot.send_to_telegram("image.jpg", "🧪 <b>گزارش لحظه‌ای LAB</b>")
         self.assertEqual(mocked_api.call_args_list[-1].args[0], "deleteMessage")
         self.assertEqual(mocked_api.call_args_list[-1].args[1]["message_id"], 111)
+
+
+    def test_service_message_detector_ignores_normal_user_messages(self):
+        self.assertTrue(bot.is_telegram_service_message({
+            "message_id": 10, "new_chat_members": [{"id": 1}]
+        }))
+        self.assertTrue(bot.is_telegram_service_message({
+            "message_id": 11, "pinned_message": {"message_id": 5}
+        }))
+        self.assertFalse(bot.is_telegram_service_message({
+            "message_id": 12, "text": "سلام بچه‌ها"
+        }))
+
+    @patch.object(bot, "telegram_api")
+    @patch.object(bot, "BOT_TOKEN", "test-token")
+    @patch.object(bot, "CHAT_ID", "@lab_chats")
+    def test_cleanup_deletes_service_messages_but_keeps_normal_messages(self, mocked_api):
+        mocked_api.side_effect = [
+            {"url": ""},
+            {"id": 123},
+            {"id": -100123, "type": "supergroup"},
+            {"status": "administrator", "can_delete_messages": True},
+            [
+                {"update_id": 20, "message": {
+                    "message_id": 501, "chat": {"id": -100123},
+                    "new_chat_members": [{"id": 456}],
+                }},
+                {"update_id": 21, "message": {
+                    "message_id": 502, "chat": {"id": -100123},
+                    "text": "پیام معمولی گروه",
+                }},
+            ],
+            True,
+            [],
+        ]
+        deleted = bot.cleanup_telegram_service_messages()
+        self.assertEqual(deleted, 1)
+        delete_calls = [call for call in mocked_api.call_args_list if call.args and call.args[0] == "deleteMessage"]
+        self.assertEqual(len(delete_calls), 1)
+        self.assertEqual(delete_calls[0].args[1]["message_id"], 501)
+
+    @patch.object(bot, "telegram_api")
+    @patch.object(bot, "BOT_TOKEN", "test-token")
+    def test_cleanup_skips_polling_when_webhook_is_active(self, mocked_api):
+        mocked_api.return_value = {"url": "https://example.test/webhook"}
+        self.assertEqual(bot.cleanup_telegram_service_messages(), 0)
+        self.assertEqual(mocked_api.call_count, 1)
+        self.assertEqual(mocked_api.call_args.args[0], "getWebhookInfo")
 
 
 if __name__ == "__main__":
