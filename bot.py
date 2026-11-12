@@ -446,26 +446,152 @@ def google_news_search(query, limit=JARVIS_MAX_SOURCES):
     return []
 
 
+def parse_rss_search(response, source_name, limit=JARVIS_MAX_SOURCES):
+    """Parse RSS/Atom search results with the standard-library XML parser."""
+    response.raise_for_status()
+    root = ElementTree.fromstring(response.content)
+    items = root.findall(".//item") or root.findall(".//{*}item")
+    results = []
+    seen = set()
+    for item in items:
+        title = (item.findtext("title") or "").strip()
+        url = (item.findtext("link") or "").strip()
+        snippet = (item.findtext("description") or "").strip()
+        if title and url.startswith(("http://", "https://")) and url not in seen:
+            seen.add(url)
+            results.append({
+                "title": title[:240],
+                "url": url,
+                "snippet": re.sub(r"<[^>]+>", " ", snippet)[:700],
+                "provider": source_name,
+            })
+        if len(results) >= limit:
+            break
+    return results
+
+
+def bing_news_search(query, limit=JARVIS_MAX_SOURCES):
+    """Bing News RSS is a no-key alternative when HTML search is blocked."""
+    try:
+        response = HTTP.get(
+            "https://www.bing.com/news/search",
+            params={"q": query, "format": "rss"},
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/rss+xml,application/xml"},
+            timeout=(8, 18),
+        )
+        results = parse_rss_search(response, "Bing News", limit)
+        logging.info("Bing News RSS returned %s results", len(results))
+        return results
+    except Exception as error:
+        logging.warning("Bing News RSS failed: %s: %s", type(error).__name__, str(error)[:160])
+        return []
+
+
+def wikipedia_search(query, limit=3):
+    """Search Persian and English Wikipedia APIs without a key."""
+    results = []
+    for language in ("fa", "en"):
+        try:
+            response = HTTP.get(
+                f"https://{language}.wikipedia.org/w/api.php",
+                params={
+                    "action": "query", "list": "search", "srsearch": query,
+                    "format": "json", "utf8": 1, "srlimit": limit,
+                },
+                headers={"User-Agent": "LAB-JARVIS/1.0 (public educational bot)"},
+                timeout=(8, 15),
+            )
+            response.raise_for_status()
+            pages = response.json().get("query", {}).get("search", [])
+            for page in pages:
+                title = (page.get("title") or "").strip()
+                pageid = page.get("pageid")
+                if title and pageid:
+                    results.append({
+                        "title": title[:240],
+                        "url": f"https://{language}.wikipedia.org/w/index.php?curid={int(pageid)}",
+                        "snippet": re.sub(r"<[^>]+>", " ", page.get("snippet") or "")[:700],
+                        "provider": f"Wikipedia-{language}",
+                    })
+            if pages:
+                logging.info("Wikipedia %s returned %s results", language, len(pages))
+        except Exception as error:
+            logging.warning("Wikipedia %s search failed: %s: %s", language, type(error).__name__, str(error)[:140])
+    return results[:limit]
+
+
+def duckduckgo_instant_search(query, limit=3):
+    """DuckDuckGo's public Instant Answer API; useful for definitions and entities."""
+    try:
+        response = HTTP.get(
+            "https://api.duckduckgo.com/",
+            params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
+            headers={"User-Agent": "LAB-JARVIS/1.0"},
+            timeout=(8, 15),
+        )
+        response.raise_for_status()
+        data = response.json()
+        results = []
+        abstract = (data.get("AbstractText") or "").strip()
+        abstract_url = (data.get("AbstractURL") or "").strip()
+        heading = (data.get("Heading") or query).strip()
+        if abstract and abstract_url.startswith("http"):
+            results.append({"title": heading[:240], "url": abstract_url, "snippet": abstract[:700], "provider": "DuckDuckGo Instant Answer"})
+        def collect_topics(topics):
+            for topic in topics or []:
+                if len(results) >= limit:
+                    return
+                if isinstance(topic, dict) and topic.get("Topics"):
+                    collect_topics(topic["Topics"])
+                elif isinstance(topic, dict):
+                    text_value = (topic.get("Text") or "").strip()
+                    url = (topic.get("FirstURL") or "").strip()
+                    if text_value and url.startswith("http"):
+                        results.append({"title": text_value[:240], "url": url, "snippet": text_value[:700], "provider": "DuckDuckGo Instant Answer"})
+        collect_topics(data.get("RelatedTopics"))
+        logging.info("DuckDuckGo Instant Answer returned %s results", len(results))
+        return results[:limit]
+    except Exception as error:
+        logging.warning("DuckDuckGo Instant Answer failed: %s: %s", type(error).__name__, str(error)[:160])
+        return []
+
+
 def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
-    """Search free public HTML endpoints; no paid API or key is required."""
+    """Combine independent free sources; HTML scraping is only a last resort."""
+    collected = []
+    seen_urls = set()
+
+    def add(items):
+        for item in items or []:
+            url = (item.get("url") or "").strip()
+            if url.startswith(("http://", "https://")) and url not in seen_urls:
+                collected.append(item)
+                seen_urls.add(url)
+                if len(collected) >= limit:
+                    return True
+        return len(collected) >= limit
+
+    add(google_news_search(query, limit=limit))
+    if len(collected) < limit:
+        add(bing_news_search(query, limit=limit))
+    if len(collected) < limit:
+        add(duckduckgo_instant_search(query, limit=3))
+    if len(collected) < limit:
+        add(wikipedia_search(query, limit=3))
+
     endpoints = (
         ("https://html.duckduckgo.com/html/", {"q": query}),
         ("https://lite.duckduckgo.com/lite/", {"q": query}),
         ("https://www.bing.com/search", {"q": query}),
     )
-    errors = []
-    collected = google_news_search(query, limit=limit)
-    seen_urls = {item["url"] for item in collected}
     for endpoint, params in endpoints:
+        if len(collected) >= limit:
+            break
         try:
             response = HTTP.get(
-                endpoint,
-                params=params,
+                endpoint, params=params,
                 headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (X11; Linux x86_64) "
-                        "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-                    ),
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
                     "Accept": "text/html,application/xhtml+xml",
                     "Accept-Language": "fa,en-US;q=0.8,en;q=0.6",
                 },
@@ -474,48 +600,26 @@ def duckduckgo_search(query, limit=JARVIS_MAX_SOURCES):
             response.raise_for_status()
             parser = DuckDuckGoParser()
             parser.feed(response.text)
-            found = []
-            seen = set()
+            found = 0
             for item in parser.results:
                 raw_url = (item.get("url") or "").strip()
-                if not raw_url:
-                    continue
                 parsed = urlparse(raw_url)
                 if "duckduckgo.com" in (parsed.netloc or ""):
-                    target = parse_qs(parsed.query).get("uddg", [""])[0]
-                    if target:
-                        raw_url = unquote(target)
-                if not raw_url.startswith(("http://", "https://")) or raw_url in seen:
-                    continue
+                    raw_url = unquote(parse_qs(parsed.query).get("uddg", [""])[0])
                 host = (urlparse(raw_url).netloc or "").lower()
-                if not host or "bing.com" in host or "duckduckgo.com" in host:
-                    continue
                 title = " ".join(item.get("title", "").split())
                 snippet = " ".join(item.get("snippet", "").split())
-                if not title:
-                    continue
-                seen.add(raw_url)
-                found.append({
-                    "title": title[:240],
-                    "url": raw_url,
-                    "snippet": snippet[:700],
-                })
-                if len(collected) < limit and raw_url not in seen_urls:
-                    collected.append(found[-1])
-                    seen_urls.add(raw_url)
-                if len(collected) >= limit:
-                    return collected[:limit]
-            if found:
-                logging.info("JARVIS search collected %s results including %s", len(collected), endpoint)
-            errors.append(f"{endpoint}: no parseable results")
+                if title and host and raw_url.startswith(("http://", "https://")) and raw_url not in seen_urls and not any(x in host for x in ("bing.com", "duckduckgo.com")):
+                    add([{"title": title[:240], "url": raw_url, "snippet": snippet[:700], "provider": endpoint}])
+                    found += 1
+                    if len(collected) >= limit:
+                        break
+            logging.info("HTML search %s parsed %s items", endpoint, found)
         except Exception as error:
-            errors.append(f"{endpoint}: {str(error)[:120]}")
-            logging.warning("JARVIS search endpoint failed (%s): %s", endpoint, error)
-    if collected:
-        logging.info("JARVIS returned %s combined Google/DDG/Bing results", len(collected))
-        return collected[:limit]
-    logging.warning("All free search endpoints failed: %s", " | ".join(errors))
-    return []
+            logging.warning("HTML search endpoint failed (%s): %s: %s", endpoint, type(error).__name__, str(error)[:140])
+
+    logging.info("JARVIS collected %s distinct results from free providers", len(collected))
+    return collected[:limit]
 
 
 def ask_openrouter_free(question, sources):
@@ -576,7 +680,17 @@ def ask_openrouter_free(question, sources):
     choices = data.get("choices") or []
     answer = ((choices[0].get("message") or {}).get("content") or "").strip() if choices else ""
     if not answer:
-        raise RuntimeError("مدل رایگان فعلاً پاسخی برنگرداند.")
+        logging.warning("OpenRouter free router returned no text; using grounded source digest. response_keys=%s", sorted(data.keys()))
+        excerpts = []
+        for item in sources[:4]:
+            snippet = " ".join((item.get("snippet") or "").split())
+            if snippet:
+                excerpts.append(f"• {item.get('title', 'منبع')}\n{snippet[:420]}\n{item.get('url', '')}")
+        if excerpts:
+            return ("قربان، مدل هوش مصنوعی رایگان فعلاً پاسخ متنی نداد؛ برای اینکه بی‌جواب نمونید، "
+                    "خلاصهٔ مستقیم نتایج پیدا شده رو می‌ذارم. این بخش جمع‌بندی هوشمند نیست و باید با متن منابع سنجیده بشه:\n\n"
+                    + "\n\n".join(excerpts))[:3500]
+        raise RuntimeError("مدل رایگان فعلاً پاسخی برنگرداند و متن قابل‌استنادی هم از منابع دریافت نشد.")
     return answer[:3600]
 
 
