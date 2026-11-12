@@ -66,6 +66,12 @@ def fit_font(draw, text, max_width, initial_size, min_size=16):
     return get_font(min_size)
 
 
+def get_price_color(change):
+    if change is None or change == 0:
+        return (255, 255, 255)
+    return (35, 230, 130) if change > 0 else (255, 75, 90)
+
+
 def get_market_data():
     response = HTTP.get(PRICE_API, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
@@ -138,7 +144,7 @@ def create_image(price, change, history):
     draw = ImageDraw.Draw(image)
     width, height = image.size
     white, green, red, muted = (255, 255, 255), (35, 230, 130), (255, 75, 90), (180, 190, 200)
-    price_color = green if change is not None and change > 0 else red if change is not None and change < 0 else white
+    price_color = get_price_color(change)
 
     price_text = f"{chr(36)}{price:.5f}"
     price_font = fit_font(draw, price_text, int(width * 0.88), max(42, int(width * 0.105)), 20)
