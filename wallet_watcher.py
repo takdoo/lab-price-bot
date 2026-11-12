@@ -13,7 +13,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 CONTRACT = "0x7ec43cf65f1663f820427c62a5780b8f2e25593a"
 PLATFORM = os.getenv("CMC_PLATFORM", "bsc")
-CMC_URL = "https://pro-api.coinmarketcap.com/public-api/v1/dex/holders/list"
+CMC_API_KEY = os.getenv("CMC_PRO_API_KEY", "").strip()
+CMC_URL = (
+    "https://pro-api.coinmarketcap.com/v1/dex/holders/list"
+    if CMC_API_KEY
+    else "https://pro-api.coinmarketcap.com/public-api/v1/dex/holders/list"
+)
 STATE_FILE = Path("top_holders.json")
 OUTPUT_FILE = Path("lab_whale_watch.jpg")
 STATUS_OUTPUT_FILE = Path("lab_whale_status.jpg")
@@ -59,14 +64,22 @@ def fetch_holders():
     payload = None
     failures = []
     for platform in candidates:
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        if CMC_API_KEY:
+            headers["X-CMC_PRO_API_KEY"] = CMC_API_KEY
         response = requests.post(
             CMC_URL,
             json={"tokenAddress": CONTRACT, "platform": platform, "tag": "tag_all"},
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            headers=headers,
             timeout=TIMEOUT,
         )
         if not response.ok:
             detail = response.text[:1200].replace("\\n", " ")
+            if response.status_code == 429 and not CMC_API_KEY:
+                raise RuntimeError(
+                    "CoinMarketCap anonymous-access limit reached (HTTP 429). "
+                    "Add a free CMC API key as the GitHub Actions secret CMC_PRO_API_KEY."
+                )
             failures.append(f"{platform}: HTTP {response.status_code} {detail}")
             # Only retry a parameter-format rejection. Other HTTP errors
             # (rate limits, server failures, auth) should fail immediately.
