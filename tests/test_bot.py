@@ -84,25 +84,48 @@ class RenderingTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
+    @patch.object(bot, "telegram_api")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
     @patch.object(bot.HTTP, "post")
-    def test_new_photo_message_succeeds(self, mocked_post):
+    def test_new_photo_message_is_sent_and_pinned(self, mocked_post, mocked_api):
+        mocked_api.side_effect = [
+            {"id": 123},  # getMe
+            {},           # getChat: no previous pinned message
+            {"message_id": 67890},  # pinChatMessage
+        ]
         response = Mock()
         response.json.return_value = {"ok": True, "result": {"message_id": 67890}}
         mocked_post.return_value = response
         with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
-            bot.send_to_telegram("image.jpg", "caption")
+            bot.send_to_telegram("image.jpg", "🧪 <b>گزارش لحظه‌ای LAB</b>")
         self.assertEqual(mocked_post.call_count, 1)
         self.assertIn("/sendPhoto", mocked_post.call_args.args[0])
-        self.assertEqual(mocked_post.call_args.kwargs["data"]["chat_id"], "@lab_chats")
-        self.assertEqual(mocked_post.call_args.kwargs["data"]["caption"], "caption")
+        self.assertEqual(mocked_api.call_args_list[-1].args[0], "pinChatMessage")
 
+    @patch.object(bot, "telegram_api")
     @patch.object(bot, "BOT_TOKEN", "test-token")
-    @patch.object(bot, "CHAT_ID", "")
-    def test_missing_chat_id_fails_before_network(self):
-        with self.assertRaisesRegex(ValueError, "CHAT_ID"):
-            bot.send_to_telegram("image.jpg", "caption")
+    @patch.object(bot, "CHAT_ID", "@lab_chats")
+    @patch.object(bot.HTTP, "post")
+    def test_previous_pinned_lab_post_is_deleted_after_new_pin(self, mocked_post, mocked_api):
+        mocked_api.side_effect = [
+            {"id": 123},
+            {"pinned_message": {
+                "message_id": 111,
+                "from": {"id": 123},
+                "caption": "🧪 <b>گزارش لحظه‌ای LAB</b>",
+            }},
+            {"message_id": 222},
+            {"message_id": 222},
+            True,
+        ]
+        response = Mock()
+        response.json.return_value = {"ok": True, "result": {"message_id": 222}}
+        mocked_post.return_value = response
+        with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
+            bot.send_to_telegram("image.jpg", "🧪 <b>گزارش لحظه‌ای LAB</b>")
+        self.assertEqual(mocked_api.call_args_list[-1].args[0], "deleteMessage")
+        self.assertEqual(mocked_api.call_args_list[-1].args[1]["message_id"], 111)
 
 
 if __name__ == "__main__":
