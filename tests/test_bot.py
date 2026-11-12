@@ -88,7 +88,7 @@ class TelegramTests(unittest.TestCase):
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
     @patch.object(bot.HTTP, "post")
-    def test_new_photo_message_is_sent_and_pinned(self, mocked_post, mocked_api):
+    def test_new_photo_message_is_sent_and_pinned(self, mocked_api, mocked_post):
         mocked_api.side_effect = [
             {"id": 123},  # getMe
             {},           # getChat: no previous pinned message
@@ -107,7 +107,7 @@ class TelegramTests(unittest.TestCase):
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
     @patch.object(bot.HTTP, "post")
-    def test_previous_pinned_lab_post_is_deleted_after_new_pin(self, mocked_post, mocked_api):
+    def test_previous_pinned_lab_post_is_deleted_after_new_pin(self, mocked_api, mocked_post):
         mocked_api.side_effect = [
             {"id": 123},
             {"pinned_message": {
