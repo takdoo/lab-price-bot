@@ -2,7 +2,7 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from wallet_watcher import compare, fetch_holders
+from wallet_watcher import compare, delete_telegram_message, fetch_holders
 
 
 class CompareTopHoldersTests(unittest.TestCase):
@@ -51,6 +51,30 @@ class CompareTopHoldersTests(unittest.TestCase):
         self.assertTrue(entered["entered"])
         self.assertIsNone(entered["delta"])
 
+
+    @patch("wallet_watcher.requests.post")
+    def test_delete_telegram_message_uses_only_tracked_message_id(self, mocked_post):
+        class FakeResponse:
+            text = ""
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"ok": True, "result": True}
+
+        mocked_post.return_value = FakeResponse()
+        with patch("wallet_watcher.BOT_TOKEN", "test-token"), patch("wallet_watcher.CHAT_ID", "@lab_chats"):
+            self.assertTrue(delete_telegram_message(12345))
+
+        self.assertEqual(
+            mocked_post.call_args.args[0],
+            "https://api.telegram.org/bottest-token/deleteMessage",
+        )
+        self.assertEqual(
+            mocked_post.call_args.kwargs["data"],
+            {"chat_id": "@lab_chats", "message_id": 12345},
+        )
 
     @patch("wallet_watcher.requests.post")
     def test_holder_fetch_uses_bnb_slug_and_parses_top_ten(self, mocked_post):
