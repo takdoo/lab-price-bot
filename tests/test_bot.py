@@ -48,6 +48,12 @@ class MarketDataTests(unittest.TestCase):
 
 
 class RenderingTests(unittest.TestCase):
+    def test_price_color_tracks_market_direction(self):
+        self.assertEqual(bot.get_price_color(1.2), (35, 230, 130))
+        self.assertEqual(bot.get_price_color(-1.2), (255, 75, 90))
+        self.assertEqual(bot.get_price_color(0), (255, 255, 255))
+        self.assertEqual(bot.get_price_color(None), (255, 255, 255))
+
     def test_flat_chart_does_not_crash(self):
         from PIL import Image, ImageDraw
 
