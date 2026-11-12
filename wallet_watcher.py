@@ -250,11 +250,11 @@ def send_status(changes, previous_message_id=None, first_run=False):
         status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
         status_emoji = "🟠"
     message = (
-        f"<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\\n"
-        f"📅 {date_text} | 🕒 {time_text} (ایران)\\n"
-        f"🔍 بررسی: <b>۱۰ کیف پول برتر</b>\\n"
-        f"{status_emoji} {status_line}\\n"
-        "⏱ بررسی بعدی حدود ۵ دقیقه دیگر\\n"
+        f"<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\n"
+        f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
+        f"🔍 بررسی: <b>۱۰ کیف پول برتر</b>\n"
+        f"{status_emoji} {status_line}\n"
+        "⏱ بررسی بعدی حدود ۵ دقیقه دیگر\n"
         "👥 @lab_chats"
     )
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -292,7 +292,7 @@ def save_state(holders, status_message_id):
         "status_message_id": status_message_id,
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
     }
-    STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def main():
