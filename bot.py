@@ -738,11 +738,15 @@ def cleanup_telegram_service_messages(listen_seconds=0):
             or member.get("can_delete_messages") is True
             or (chat_type == "group" and status == "administrator")
         )
-        if not can_delete:
+        if status not in ("creator", "administrator"):
             logging.warning(
-                "پاکسازی اعلان‌ها انجام نشد: ربات در گروه دسترسی حذف پیام‌ها ندارد"
+                "جرویس برای دریافت مطمئن پیام‌های گروه باید مدیر گروه باشد؛ polling انجام نشد"
             )
             return 0
+        if not can_delete:
+            logging.info(
+                "ربات دسترسی حذف پیام‌ها ندارد؛ دریافت درخواست‌های جرویس ادامه دارد اما پاکسازی اعلان‌ها غیرفعال است"
+            )
 
         # Cache the resolved numeric chat id for the JARVIS authorization check.
         telegram_chat_id._resolved = target_chat_id
@@ -786,7 +790,7 @@ def cleanup_telegram_service_messages(listen_seconds=0):
                 except Exception:
                     logging.exception("پردازش پیام جرویس ناموفق بود")
 
-                if not is_telegram_service_message(message):
+                if not is_telegram_service_message(message) or not can_delete:
                     continue
                 message_chat = message.get("chat") or {}
                 if message_chat.get("id") != target_chat_id:
