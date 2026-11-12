@@ -457,7 +457,7 @@ def ask_openrouter_free(question, sources):
     if not OPENROUTER_API_KEY:
         raise RuntimeError("کلید OpenRouter در GitHub Secrets پیدا نشد.")
     if not sources:
-        raise RuntimeError("جست‌وجوی رایگان نتیجه قابل‌استفاده‌ای نداد؛ فعلاً نمی‌خوام جواب حدسی بدم.")
+        raise RuntimeError("سه مسیر جست‌وجوی رایگان در دسترس نبودند یا نتیجه قابل‌خواندن ندادند؛ فعلاً جواب حدسی نمی‌دم.")
 
     source_text = "\n\n".join(
         f"[{index}] {item['title']}\n{item['snippet']}\nلینک: {item['url']}"
