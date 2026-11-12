@@ -64,7 +64,7 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
-          CMC_PLATFORM: "14"
+          CMC_PLATFORM: "bsc"
           WHALE_ALERT_LAB: "1000000"
         run: python wallet_watcher.py
 
