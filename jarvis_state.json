@@ -1,8 +1,27 @@
 {
   "jarvis_message_ids": [
-    7621
+    8807,
+    8816,
+    8817
   ],
   "original_chat_permissions": null,
   "group_locked": false,
-  "conversation_history": []
+  "conversation_history": [
+    {
+      "role": "user",
+      "content": "لب در چه حاله"
+    },
+    {
+      "role": "assistant",
+      "content": "سلام قربان، مدیر گروه عزیز.\n\nبسته به منابعی که در پیام شما آمده، هیچ اطلاعاتی درباره «حالت لب» وجود ندارد. نتایج جست‌وجو شامل فیلم Sex and the City، ویدیو شیرین لب، شخصیت اینویاشا، ترانه‌شناسی هیدا و کتاب"
+    },
+    {
+      "role": "user",
+      "content": "حجم توکن lab رو بررسی کن"
+    },
+    {
+      "role": "assistant",
+      "content": "قربان، مدل هوش مصنوعی رایگان فعلاً پاسخ متنی نداد؛ برای اینکه بی‌جواب نمونید، خلاصهٔ مستقیم نتایج پیدا شده رو می‌ذارم. این بخش جمع‌بندی هوشمند نیست و باید با متن منابع سنجیده بشه:\n\n• گاهشمار هوش مصنوعی\nISSN 0048-3931. S2CID 148093595. {{cite journal}}: تاریخ وارد شده در |date= را بررسی کنید (کمک) Russell &amp; Norvig 2021, p. 8; McCorduck 2004, pp. 48–51 پروژه\nhttps://fa.wikipedia.org/w/index.php?curid=6999461"
+    }
+  ]
 }
