@@ -26,7 +26,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("CHAT_ID", "@lab_chats").strip()
 ALERT_THRESHOLD = Decimal(os.getenv("WHALE_ALERT_LAB", "1000000"))
 TOP_HOLDERS_COUNT = 20
-COINGLASS_API_KEY = os.getenv("COINGLASS_API_KEY", "").strip()
 TIMEOUT = (10, 30)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -135,43 +134,79 @@ def fetch_holders():
     return holders[:TOP_HOLDERS_COUNT]
 
 
-def fetch_futures_data():
-    """Fetch LAB futures pairs from CoinGlass when an API key is configured."""
-    if not COINGLASS_API_KEY:
-        logging.info("CoinGlass API key not configured; futures data is unavailable")
+def _decimal_or_none(value):
+    if value in (None, ""):
         return None
-    response = requests.get(
-        "https://open-api-v4.coinglass.com/api/futures/pairs-markets",
-        params={"symbol": "LAB"},
-        headers={"CG-API-KEY": COINGLASS_API_KEY, "accept": "application/json"},
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if str(payload.get("code")) != "0":
-        raise RuntimeError(f"CoinGlass API error: {payload.get('msg', 'unknown error')}")
-    rows = payload.get("data")
-    if not isinstance(rows, list):
-        raise ValueError("CoinGlass futures response has no data list")
-    pairs = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        try:
-            pairs.append({
-                "exchange": str(row.get("exchange_name") or "Unknown"),
-                "pair": str(row.get("symbol") or ""),
-                "volume_usd": Decimal(str(row.get("volume_usd") or 0)),
-                "open_interest_usd": Decimal(str(row.get("open_interest_usd") or 0)),
-                "oi_change_24h": Decimal(str(row["open_interest_change_percent_24h"])) if row.get("open_interest_change_percent_24h") is not None else None,
-                "funding_rate": Decimal(str(row["funding_rate"])) if row.get("funding_rate") is not None else None,
-                "long_liquidation_usd": Decimal(str(row.get("long_liquidation_usd_24h") or 0)),
-                "short_liquidation_usd": Decimal(str(row.get("short_liquidation_usd_24h") or 0)),
-            })
-        except (InvalidOperation, ValueError):
-            continue
-    return pairs
+    try:
+        number = Decimal(str(value))
+        return number if number.is_finite() else None
+    except (InvalidOperation, ValueError):
+        return None
 
+
+def fetch_futures_data():
+    """Fetch LABUSDT futures metrics from free public exchange endpoints."""
+    pairs = []
+    errors = []
+    base = "https://fapi.binance.com"
+    try:
+        r = requests.get(base + "/fapi/v1/ticker/24hr", params={"symbol": "LABUSDT"}, timeout=TIMEOUT)
+        r.raise_for_status()
+        ticker = r.json()
+        r = requests.get(base + "/fapi/v1/openInterest", params={"symbol": "LABUSDT"}, timeout=TIMEOUT)
+        r.raise_for_status()
+        oi = r.json()
+        r = requests.get(base + "/fapi/v1/premiumIndex", params={"symbol": "LABUSDT"}, timeout=TIMEOUT)
+        r.raise_for_status()
+        funding = r.json()
+        oi_change = None
+        try:
+            r = requests.get(base + "/futures/data/openInterestHist", params={"symbol": "LABUSDT", "period": "1h", "limit": 25}, timeout=TIMEOUT)
+            r.raise_for_status()
+            hist = r.json()
+            if isinstance(hist, list) and len(hist) >= 2:
+                first = _decimal_or_none(hist[0].get("sumOpenInterestValue"))
+                last = _decimal_or_none(hist[-1].get("sumOpenInterestValue"))
+                if first and first != 0 and last is not None:
+                    oi_change = (last - first) / first * Decimal(100)
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            logging.warning("Binance OI history unavailable")
+        oi_amount = _decimal_or_none(oi.get("openInterest"))
+        mark = _decimal_or_none(funding.get("markPrice"))
+        pairs.append({"exchange": "Binance", "pair": "LABUSDT", "volume_usd": _decimal_or_none(ticker.get("quoteVolume")) or Decimal(0), "open_interest_usd": (oi_amount * mark if oi_amount is not None and mark is not None else Decimal(0)), "oi_change_24h": oi_change, "funding_rate": _decimal_or_none(funding.get("lastFundingRate")), "long_liquidation_usd": None, "short_liquidation_usd": None})
+    except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+        errors.append("Binance: " + str(exc))
+        logging.warning("Binance futures data unavailable: %s", exc)
+    base = "https://api.bybit.com"
+    try:
+        r = requests.get(base + "/v5/market/tickers", params={"category": "linear", "symbol": "LABUSDT"}, timeout=TIMEOUT)
+        r.raise_for_status()
+        payload = r.json()
+        if str(payload.get("retCode")) != "0":
+            raise RuntimeError(str(payload.get("retMsg", "Bybit ticker error")))
+        rows = (payload.get("result") or {}).get("list") or []
+        if rows:
+            row = rows[0]
+            oi_change = None
+            try:
+                r = requests.get(base + "/v5/market/open-interest", params={"category": "linear", "symbol": "LABUSDT", "intervalTime": "1h", "limit": 25}, timeout=TIMEOUT)
+                r.raise_for_status()
+                hist = (r.json().get("result") or {}).get("list") or []
+                if len(hist) >= 2:
+                    first = _decimal_or_none(hist[-1].get("openInterest"))
+                    last = _decimal_or_none(hist[0].get("openInterest"))
+                    if first and first != 0 and last is not None:
+                        oi_change = (last - first) / first * Decimal(100)
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                logging.warning("Bybit OI history unavailable")
+            pairs.append({"exchange": "Bybit", "pair": "LABUSDT", "volume_usd": _decimal_or_none(row.get("turnover24h")) or Decimal(0), "open_interest_usd": _decimal_or_none(row.get("openInterestValue")) or Decimal(0), "oi_change_24h": oi_change, "funding_rate": _decimal_or_none(row.get("fundingRate")), "long_liquidation_usd": None, "short_liquidation_usd": None})
+    except (requests.RequestException, ValueError, TypeError, AttributeError, RuntimeError) as exc:
+        errors.append("Bybit: " + str(exc))
+        logging.warning("Bybit futures data unavailable: %s", exc)
+    if not pairs:
+        logging.warning("No public LAB futures data: %s", "; ".join(errors))
+        return None
+    return pairs
 
 def format_usd(value):
     amount = Decimal(str(value))
@@ -184,9 +219,9 @@ def format_usd(value):
 
 def futures_caption(pairs):
     if pairs is None:
-        return "📊 فیوچرز: داده زنده فعال نیست؛ Secret با نام COINGLASS_API_KEY لازم است."
+        return "📊 فیوچرز LAB: دریافت داده از API عمومی صرافی‌ها فعلاً ناموفق بود."
     if not pairs:
-        return "📊 فیوچرز LAB: در CoinGlass قرارداد پشتیبانی‌شده‌ای برنگشت."
+        return "📊 فیوچرز LAB: قرارداد پشتیبانی‌شده‌ای برنگشت."
     total_volume = sum((item["volume_usd"] for item in pairs), Decimal(0))
     total_oi = sum((item["open_interest_usd"] for item in pairs), Decimal(0))
     known_oi = [item["oi_change_24h"] for item in pairs if item["oi_change_24h"] is not None]
@@ -198,11 +233,9 @@ def futures_caption(pairs):
         if weight:
             rate = sum((rate * oi for rate, oi in weighted_funding), Decimal(0)) / weight
             funding_text = f"{rate:+.4f}% میانگین وزنی OI"
-    long_liq = sum((item["long_liquidation_usd"] for item in pairs), Decimal(0))
-    short_liq = sum((item["short_liquidation_usd"] for item in pairs), Decimal(0))
-    return (f"📊 فیوچرز LAB ({len(pairs)} بازار): حجم ۲۴ساعته {format_usd(total_volume)} | "
+    return (f"📊 فیوچرز LAB ({len(pairs)} بازار عمومی): حجم ۲۴ساعته {format_usd(total_volume)} | "
             f"OI {format_usd(total_oi)} | تغییر OI: {oi_text} | فاندینگ: {funding_text} | "
-            f"لیکوییدیشن لانگ/شورت: {format_usd(long_liq)}/{format_usd(short_liq)}")
+            "لیکوییدیشن: از API عمومی این نسخه دریافت نمی‌شود.")
 
 def load_state():
     if not STATE_FILE.exists():
