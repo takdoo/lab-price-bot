@@ -2,7 +2,7 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from wallet_watcher import compare, delete_telegram_message, fetch_holders
+from wallet_watcher import compare, delete_telegram_message, fetch_holders, fetch_futures_data, futures_caption, TOP_HOLDERS_COUNT
 
 
 class CompareTopHoldersTests(unittest.TestCase):
@@ -76,11 +76,24 @@ class CompareTopHoldersTests(unittest.TestCase):
             {"chat_id": "@lab_chats", "message_id": 12345},
         )
 
+    @patch("wallet_watcher.requests.get")
+    def test_futures_fetch_parses_coin_glass_pairs(self, mocked_get):
+        class FakeResponse:
+            def raise_for_status(self): pass
+            def json(self):
+                return {"code": "0", "data": [{"exchange_name": "Example", "symbol": "LAB/USDT", "volume_usd": 1000000, "open_interest_usd": 500000, "open_interest_change_percent_24h": -5, "funding_rate": 0.01, "long_liquidation_usd_24h": 1000, "short_liquidation_usd_24h": 2000}]}
+        mocked_get.return_value = FakeResponse()
+        with patch("wallet_watcher.COINGLASS_API_KEY", "test-key"):
+            pairs = fetch_futures_data()
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0]["exchange"], "Example")
+        self.assertIn("OI", futures_caption(pairs))
+
     @patch("wallet_watcher.requests.post")
-    def test_holder_fetch_uses_bnb_slug_and_parses_top_ten(self, mocked_post):
+    def test_holder_fetch_uses_bnb_slug_and_parses_top_twenty(self, mocked_post):
         rows = [
             {"walletAddress": "0x" + format(i, "040x"), "actualBalance": str(1000 - i)}
-            for i in range(10)
+            for i in range(20)
         ]
 
         class FakeResponse:
@@ -94,7 +107,7 @@ class CompareTopHoldersTests(unittest.TestCase):
         mocked_post.return_value = FakeResponse()
         holders = fetch_holders()
 
-        self.assertEqual(len(holders), 10)
+        self.assertEqual(len(holders), TOP_HOLDERS_COUNT)
         self.assertEqual(holders[0]["balance"], "1000")
         self.assertEqual(mocked_post.call_args.kwargs["json"]["platform"], "bsc")
 
