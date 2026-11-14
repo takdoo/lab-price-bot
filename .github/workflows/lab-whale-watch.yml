@@ -56,10 +56,10 @@ jobs:
       - name: Validate watcher configuration
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+          CHAT_IDS: ${{ secrets.CHAT_IDS || '@lab_chats,@labcoinss' }}
         run: |
           test -n "$BOT_TOKEN" || { echo "::error::BOT_TOKEN is missing"; exit 1; }
-          test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
+          test -n "$CHAT_IDS" || { echo "::error::CHAT_IDS is empty"; exit 1; }
 
       - name: Validate watcher and run unit tests
         run: |
@@ -70,7 +70,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+          CHAT_IDS: ${{ secrets.CHAT_IDS || '@lab_chats,@labcoinss' }}
           CMC_PLATFORM: "bsc"
           CMC_PRO_API_KEY: ${{ secrets.CMC_PRO_API_KEY }}
           WHALE_ALERT_LAB: "1000000"
