@@ -294,9 +294,9 @@ def create_graphic(changes):
             rank = item["new_rank"] or item["old_rank"] or 0
             title = f"کیف پول رتبه {fa_digits(rank)}"
             if item["entered"]:
-                state = "ورود به ۱۰ کیف پول برتر"
+                state = "ورود به ۲۰ کیف پول برتر"
             elif item["left"]:
-                state = "خروج از ۱۰ کیف پول برتر"
+                state = "خروج از ۲۰ کیف پول برتر"
             elif positive:
                 state = "افزایش موجودی"
             elif negative:
@@ -422,7 +422,7 @@ def create_status_graphic(changes, first_run=False):
     return STATUS_OUTPUT_FILE
 
 
-def send_status(changes, previous_message_id=None, first_run=False):
+def send_status(changes, previous_message_id=None, first_run=False, futures_pairs=None):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
     date_text, time_text = iran_time()
@@ -439,6 +439,7 @@ def send_status(changes, previous_message_id=None, first_run=False):
         f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
         f"🔎 {status_line}\n"
         "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\n"
+        + futures_caption(futures_pairs) + "\n"
         "👥 @lab_chats"
     )
     image_path = create_status_graphic(changes, first_run=first_run)
@@ -518,6 +519,7 @@ def main():
         changes,
         previous_message_id=state.get("status_message_id"),
         first_run=first_run,
+        futures_pairs=futures_pairs,
     )
     save_state(current, new_status_id, remaining_alert_ids)
 
