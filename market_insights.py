@@ -1,4 +1,4 @@
-""""Free public-API market analysis for LAB/USDT."""
+"""Free public-API market analysis for LAB/USDT."""
 import logging, os
 from decimal import Decimal, InvalidOperation
 import requests
@@ -105,7 +105,7 @@ def build_report(markets, volume, levels):
             mood="مثبت" if avg>1 else "منفی" if avg < -1 else "خنثی/کم‌نوسان"
             lines.append(f"وضعیت ساده بازار بر اساس تغییر ۲۴ساعته: {mood} ({avg:+.2f}%).")
     lines.append("ℹ️ تحلیل خودکار داده‌های عمومی است، نه سیگنال خرید یا فروش.")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 def send_report(report, chat_id):
     token=os.getenv("BOT_TOKEN","").strip()
