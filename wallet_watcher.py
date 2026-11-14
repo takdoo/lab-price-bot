@@ -23,7 +23,7 @@ STATE_FILE = Path("top_holders.json")
 OUTPUT_FILE = Path("lab_whale_watch.jpg")
 STATUS_OUTPUT_FILE = Path("lab_whale_status.jpg")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-CHAT_ID = os.getenv("CHAT_ID", "@lab_chats").strip()
+CHAT_IDS = list(dict.fromkeys(item.strip() for item in os.getenv("CHAT_IDS", os.getenv("CHAT_ID", "@lab_chats,@labcoinss")).split(",") if item.strip()))
 ALERT_THRESHOLD = Decimal(os.getenv("WHALE_ALERT_LAB", "1000000"))
 TOP_HOLDERS_COUNT = 20
 TIMEOUT = (10, 30)
@@ -361,7 +361,7 @@ def create_graphic(changes):
     return OUTPUT_FILE
 
 
-def send_to_telegram(image_path, changes, futures_pairs=None):
+def send_to_telegram(image_path, changes, chat_id, futures_pairs=None):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
     date_text, time_text = iran_time()
@@ -371,13 +371,13 @@ def send_to_telegram(image_path, changes, futures_pairs=None):
         f"🔎 تعداد تغییرات شناسایی‌شده: <b>{len(changes)}</b>\n"
         "ℹ️ تغییر موجودی الزاماً به معنی خرید یا فروش نیست.\n"
         + futures_caption(futures_pairs) + "\n"
-        "👥 @lab_chats"
+        f"👥 {chat_id}"
     )
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     with open(image_path, "rb") as photo:
         response = requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
             files={"photo": photo},
             timeout=TIMEOUT,
         )
@@ -390,7 +390,7 @@ def send_to_telegram(image_path, changes, futures_pairs=None):
     return message_id
 
 
-def delete_telegram_message(message_id):
+def delete_telegram_message(message_id, chat_id):
     """Delete only a previously tracked bot message."""
     if not message_id:
         return True
@@ -398,7 +398,7 @@ def delete_telegram_message(message_id):
     try:
         response = requests.post(
             url,
-            data={"chat_id": CHAT_ID, "message_id": message_id},
+            data={"chat_id": chat_id, "message_id": message_id},
             timeout=TIMEOUT,
         )
         response.raise_for_status()
@@ -455,7 +455,7 @@ def create_status_graphic(changes, first_run=False):
     return STATUS_OUTPUT_FILE
 
 
-def send_status(changes, previous_message_id=None, first_run=False, futures_pairs=None):
+def send_status(changes, chat_id, previous_message_id=None, first_run=False, futures_pairs=None):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
     date_text, time_text = iran_time()
@@ -473,14 +473,14 @@ def send_status(changes, previous_message_id=None, first_run=False, futures_pair
         f"🔎 {status_line}\n"
         "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\n"
         + futures_caption(futures_pairs) + "\n"
-        "👥 @lab_chats"
+        f"👥 {chat_id}"
     )
     image_path = create_status_graphic(changes, first_run=first_run)
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     with open(image_path, "rb") as photo:
         response = requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
             files={"photo": photo},
             timeout=TIMEOUT,
         )
@@ -496,7 +496,7 @@ def send_status(changes, previous_message_id=None, first_run=False, futures_pair
         try:
             deleted = requests.post(
                 delete_url,
-                data={"chat_id": CHAT_ID, "message_id": previous_message_id},
+                data={"chat_id": chat_id, "message_id": previous_message_id},
                 timeout=TIMEOUT,
             )
             deleted.raise_for_status()
@@ -506,10 +506,10 @@ def send_status(changes, previous_message_id=None, first_run=False, futures_pair
             logging.warning("حذف پیام وضعیت قبلی ناموفق بود: %s", exc)
     return new_message_id
 
-def save_state(holders, status_message_id, alert_message_ids=None):
+def save_state(holders, status_message_ids, alert_message_ids=None):
     payload = {
         "holders": {item["address"]: item["balance"] for item in holders},
-        "status_message_id": status_message_id,
+        "status_message_ids": status_message_ids,
         "alert_message_ids": list(alert_message_ids or []),
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
     }
@@ -529,32 +529,36 @@ def main():
 
     # Older state files have no alert ID; keep backward compatibility with them.
     previous_alert_ids = state.get("alert_message_ids")
-    if not isinstance(previous_alert_ids, list):
-        previous_alert_ids = [state.get("alert_message_id")]
-    pending_alert_ids = [message_id for message_id in previous_alert_ids if message_id]
+    if isinstance(previous_alert_ids, list):
+        previous_alert_ids = {CHAT_IDS[0]: previous_alert_ids}
+    elif not isinstance(previous_alert_ids, dict):
+        previous_alert_ids = {CHAT_IDS[0]: [state.get("alert_message_id")] if state.get("alert_message_id") else []}
+    previous_status_ids = state.get("status_message_ids")
+    if not isinstance(previous_status_ids, dict):
+        previous_status_ids = {CHAT_IDS[0]: state.get("status_message_id")}
 
     changes = compare(previous, current) if previous else []
-    if changes:
-        image_path = create_graphic(changes)
-        new_alert_id = send_to_telegram(image_path, changes, futures_pairs=futures_pairs)
-    else:
-        new_alert_id = None
+    image_path = create_graphic(changes) if changes else None
+    new_status_ids = {}
+    new_alert_ids = {}
+    remaining_alert_ids = {}
 
-    # Delete only alert photo IDs recorded by this watcher. Retry failures next run.
-    remaining_alert_ids = []
-    for message_id in pending_alert_ids:
-        if not delete_telegram_message(message_id):
-            remaining_alert_ids.append(message_id)
-    if new_alert_id:
-        remaining_alert_ids.append(new_alert_id)
-
-    new_status_id = send_status(
-        changes,
-        previous_message_id=state.get("status_message_id"),
-        first_run=first_run,
-        futures_pairs=futures_pairs,
-    )
-    save_state(current, new_status_id, remaining_alert_ids)
+    for chat_id in CHAT_IDS:
+        if changes:
+            new_alert_ids[chat_id] = send_to_telegram(image_path, changes, chat_id, futures_pairs=futures_pairs)
+        remaining = []
+        for message_id in previous_alert_ids.get(chat_id, []):
+            if not delete_telegram_message(message_id, chat_id):
+                remaining.append(message_id)
+        if new_alert_ids.get(chat_id):
+            remaining.append(new_alert_ids[chat_id])
+        remaining_alert_ids[chat_id] = remaining
+        new_status_ids[chat_id] = send_status(
+            changes, chat_id,
+            previous_message_id=previous_status_ids.get(chat_id),
+            first_run=first_run, futures_pairs=futures_pairs,
+        )
+    save_state(current, new_status_ids, remaining_alert_ids)
 
 
 
