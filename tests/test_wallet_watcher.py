@@ -115,7 +115,7 @@ class CompareTopHoldersTests(unittest.TestCase):
     def test_holder_fetch_falls_back_after_parameter_error(self, mocked_post):
         rows = [
             {"walletAddress": "0x" + format(i, "040x"), "balance": str(1000 - i)}
-            for i in range(10)
+            for i in range(20)
         ]
 
         class FakeResponse:
@@ -134,7 +134,7 @@ class CompareTopHoldersTests(unittest.TestCase):
         ]
         holders = fetch_holders()
 
-        self.assertEqual(len(holders), 10)
+        self.assertEqual(len(holders), TOP_HOLDERS_COUNT)
         self.assertEqual(mocked_post.call_count, 2)
         self.assertEqual(mocked_post.call_args.kwargs["json"]["platform"], "BNB Smart Chain")
 
