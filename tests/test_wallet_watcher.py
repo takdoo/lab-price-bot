@@ -77,18 +77,28 @@ class CompareTopHoldersTests(unittest.TestCase):
         )
 
     @patch("wallet_watcher.requests.get")
-    def test_futures_fetch_parses_coin_glass_pairs(self, mocked_get):
+    def test_futures_fetch_uses_public_binance_and_bybit_endpoints(self, mocked_get):
         class FakeResponse:
+            def __init__(self, payload): self.payload = payload
             def raise_for_status(self): pass
-            def json(self):
-                return {"code": "0", "data": [{"exchange_name": "Example", "symbol": "LAB/USDT", "volume_usd": 1000000, "open_interest_usd": 500000, "open_interest_change_percent_24h": -5, "funding_rate": 0.01, "long_liquidation_usd_24h": 1000, "short_liquidation_usd_24h": 2000}]}
-        mocked_get.return_value = FakeResponse()
-        with patch("wallet_watcher.COINGLASS_API_KEY", "test-key"):
-            pairs = fetch_futures_data()
-        self.assertEqual(len(pairs), 1)
-        self.assertEqual(pairs[0]["exchange"], "Example")
-        self.assertIn("OI", futures_caption(pairs))
+            def json(self): return self.payload
 
+        def response_for(url, **kwargs):
+            if url.endswith("/fapi/v1/ticker/24hr"): return FakeResponse({"quoteVolume": "1000000"})
+            if url.endswith("/fapi/v1/openInterest"): return FakeResponse({"openInterest": "2000000"})
+            if url.endswith("/fapi/v1/premiumIndex"): return FakeResponse({"markPrice": "0.05", "lastFundingRate": "0.0001"})
+            if url.endswith("/futures/data/openInterestHist"): return FakeResponse([{"sumOpenInterestValue": "100"}, {"sumOpenInterestValue": "110"}])
+            if url.endswith("/v5/market/tickers"): return FakeResponse({"retCode": 0, "result": {"list": [{"turnover24h": "500000", "openInterestValue": "250000", "fundingRate": "0.0002"}]}})
+            if url.endswith("/v5/market/open-interest"): return FakeResponse({"result": {"list": [{"openInterest": "110"}, {"openInterest": "100"}]}})
+            raise AssertionError("Unexpected URL: " + url)
+
+        mocked_get.side_effect = response_for
+        pairs = fetch_futures_data()
+        self.assertEqual([item["exchange"] for item in pairs], ["Binance", "Bybit"])
+        self.assertEqual(pairs[0]["open_interest_usd"], Decimal("100000.00"))
+        self.assertEqual(pairs[0]["oi_change_24h"], Decimal("10"))
+        self.assertIn("API عمومی", futures_caption(pairs))
+        self.assertIn("لیکوییدیشن", futures_caption(pairs))
     @patch("wallet_watcher.requests.post")
     def test_holder_fetch_uses_bnb_slug_and_parses_top_twenty(self, mocked_post):
         rows = [
