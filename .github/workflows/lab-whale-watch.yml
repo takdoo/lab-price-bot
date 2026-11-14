@@ -26,7 +26,7 @@ jobs:
       - name: Checkout price-bot code (watcher is isolated)
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - name: Load persistent wallet snapshot
@@ -67,6 +67,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_wallet_watcher.py' -v
 
       - name: Run wallet watcher
+        if: github.ref == 'refs/heads/main'
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
@@ -77,6 +78,7 @@ jobs:
         run: python wallet_watcher.py
 
       - name: Save snapshot to isolated state branch
+        if: github.ref == 'refs/heads/main'
         run: |
           git worktree add /tmp/lab-wallet-state origin/lab-wallet-state
           cp top_holders.json /tmp/lab-wallet-state/top_holders.json
