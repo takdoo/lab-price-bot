@@ -65,7 +65,7 @@ class CompareTopHoldersTests(unittest.TestCase):
 
         mocked_post.return_value = FakeResponse()
         with patch("wallet_watcher.BOT_TOKEN", "test-token"), patch("wallet_watcher.CHAT_ID", "@lab_chats"):
-            self.assertTrue(delete_telegram_message(12345))
+            self.assertTrue(delete_telegram_message(12345, "@lab_chats"))
 
         self.assertEqual(
             mocked_post.call_args.args[0],
