@@ -356,7 +356,7 @@ def create_graphic(changes):
     rtl_text(draw, (width - 90, height - 112), "تغییر موجودی به‌تنهایی به معنی خرید یا فروش نیست", get_font(24), "#A9BED8")
     draw.text((90, height - 112), "منبع داده: CoinMarketCap", font=get_font(18), fill="#7189A5", anchor="ls")
     draw.text((90, height - 58), "BSC  •  LAB", font=get_font(23, True), fill="#29E69A", anchor="ls")
-    rtl_text(draw, (width - 90, height - 58), "گروه تلگرامی @lab_chats", get_font(23), "#DCE8F7")
+    rtl_text(draw, (width - 90, height - 58), "گروه‌های تلگرامی @lab_chats و @labcoinss", get_font(23), "#DCE8F7")
     image.save(OUTPUT_FILE, "JPEG", quality=94, optimize=True)
     return OUTPUT_FILE
 
