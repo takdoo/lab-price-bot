@@ -1,4 +1,4 @@
-"""Free public-API market analysis for LAB/USDT."""
+""""Free public-API market analysis for LAB/USDT."""
 import logging, os
 from decimal import Decimal, InvalidOperation
 import requests
@@ -105,26 +105,43 @@ def build_report(markets, volume, levels):
             mood="مثبت" if avg>1 else "منفی" if avg < -1 else "خنثی/کم‌نوسان"
             lines.append(f"وضعیت ساده بازار بر اساس تغییر ۲۴ساعته: {mood} ({avg:+.2f}%).")
     lines.append("ℹ️ تحلیل خودکار داده‌های عمومی است، نه سیگنال خرید یا فروش.")
-    return "\n".join(lines)
+    return "\\n".join(lines)
 
-def send_report(report):
+def send_report(report, chat_id):
     token=os.getenv("BOT_TOKEN","").strip()
-    chat=os.getenv("CHAT_ID","@lab_chats").strip()
-    if not token or not chat:
-        raise RuntimeError("BOT_TOKEN یا CHAT_ID تنظیم نشده است.")
+    if not token or not chat_id:
+        raise RuntimeError("BOT_TOKEN یا شناسه گروه تنظیم نشده است.")
     r=requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-        data={"chat_id":chat,"text":report,"parse_mode":"HTML","disable_web_page_preview":True},timeout=TIMEOUT)
+        data={"chat_id":chat_id,"text":report,"parse_mode":"HTML","disable_web_page_preview":True},timeout=TIMEOUT)
     r.raise_for_status()
     result=r.json()
     if not result.get("ok"):
         raise RuntimeError(str(result.get("description")))
     return result["result"]["message_id"]
 
+def send_reports(report):
+    raw=os.getenv("CHAT_IDS", os.getenv("CHAT_ID","@lab_chats,@labcoinss"))
+    chat_ids=list(dict.fromkeys(x.strip() for x in raw.split(",") if x.strip()))
+    if not chat_ids:
+        raise RuntimeError("CHAT_IDS خالی است.")
+    sent, failed = [], []
+    for chat_id in chat_ids:
+        try:
+            message_id=send_report(report, chat_id)
+            sent.append((chat_id,message_id))
+            logging.info("Daily report sent to %s (message %s)", chat_id, message_id)
+        except Exception as e:
+            failed.append((chat_id,str(e)))
+            logging.exception("Daily report failed for %s", chat_id)
+    if failed:
+        raise RuntimeError("ارسال ناموفق برای مقصد(ها): " + "; ".join(f"{chat}: {error}" for chat,error in failed))
+    return sent
+
 def main():
     report=build_report(fetch_spot_markets(),volume_anomaly(),support_resistance())
     print(report)
     if os.getenv("SEND_TELEGRAM_REPORT","false").lower()=="true":
-        send_report(report)
+        send_reports(report)
 
 if __name__=="__main__":
     main()
