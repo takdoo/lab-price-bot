@@ -510,7 +510,7 @@ def save_state(holders, status_message_ids, alert_message_ids=None):
     payload = {
         "holders": {item["address"]: item["balance"] for item in holders},
         "status_message_ids": status_message_ids,
-        "alert_message_ids": list(alert_message_ids or []),
+        "alert_message_ids": alert_message_ids or {},
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
     }
     STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
