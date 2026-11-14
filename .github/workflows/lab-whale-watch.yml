@@ -56,7 +56,7 @@ jobs:
       - name: Validate watcher configuration
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+          CHAT_IDS: ${{ secrets.CHAT_IDS || '@lab_chats,@labcoinss' }}
         run: |
           test -n "$BOT_TOKEN" || { echo "::error::BOT_TOKEN is missing"; exit 1; }
           test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
