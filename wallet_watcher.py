@@ -25,6 +25,8 @@ STATUS_OUTPUT_FILE = Path("lab_whale_status.jpg")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("CHAT_ID", "@lab_chats").strip()
 ALERT_THRESHOLD = Decimal(os.getenv("WHALE_ALERT_LAB", "1000000"))
+TOP_HOLDERS_COUNT = 20
+COINGLASS_API_KEY = os.getenv("COINGLASS_API_KEY", "").strip()
 TIMEOUT = (10, 30)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -125,10 +127,82 @@ def fetch_holders():
         seen.add(address)
         holders.append({"address": address, "balance": str(balance)})
     holders.sort(key=lambda item: Decimal(item["balance"]), reverse=True)
-    if len(holders) < 10:
-        raise ValueError(f"فقط {len(holders)} کیف پول معتبر دریافت شد؛ برای گزارش ۱۰ هولدر کافی نیست")
-    return holders[:10]
+    if len(holders) < TOP_HOLDERS_COUNT:
+        raise ValueError(
+            f"فقط {len(holders)} کیف پول معتبر دریافت شد؛ "
+            f"برای گزارش {TOP_HOLDERS_COUNT} هولدر کافی نیست"
+        )
+    return holders[:TOP_HOLDERS_COUNT]
 
+
+def fetch_futures_data():
+    """Fetch LAB futures pairs from CoinGlass when an API key is configured."""
+    if not COINGLASS_API_KEY:
+        logging.info("CoinGlass API key not configured; futures data is unavailable")
+        return None
+    response = requests.get(
+        "https://open-api-v4.coinglass.com/api/futures/pairs-markets",
+        params={"symbol": "LAB"},
+        headers={"CG-API-KEY": COINGLASS_API_KEY, "accept": "application/json"},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if str(payload.get("code")) != "0":
+        raise RuntimeError(f"CoinGlass API error: {payload.get('msg', 'unknown error')}")
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        raise ValueError("CoinGlass futures response has no data list")
+    pairs = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            pairs.append({
+                "exchange": str(row.get("exchange_name") or "Unknown"),
+                "pair": str(row.get("symbol") or ""),
+                "volume_usd": Decimal(str(row.get("volume_usd") or 0)),
+                "open_interest_usd": Decimal(str(row.get("open_interest_usd") or 0)),
+                "oi_change_24h": Decimal(str(row["open_interest_change_percent_24h"])) if row.get("open_interest_change_percent_24h") is not None else None,
+                "funding_rate": Decimal(str(row["funding_rate"])) if row.get("funding_rate") is not None else None,
+                "long_liquidation_usd": Decimal(str(row.get("long_liquidation_usd_24h") or 0)),
+                "short_liquidation_usd": Decimal(str(row.get("short_liquidation_usd_24h") or 0)),
+            })
+        except (InvalidOperation, ValueError):
+            continue
+    return pairs
+
+
+def format_usd(value):
+    amount = Decimal(str(value))
+    if abs(amount) >= Decimal("1000000"):
+        return f"${amount / Decimal('1000000'):,.2f}M"
+    if abs(amount) >= Decimal("1000"):
+        return f"${amount / Decimal('1000'):,.1f}K"
+    return f"${amount:,.0f}"
+
+
+def futures_caption(pairs):
+    if pairs is None:
+        return "📊 فیوچرز: داده زنده فعال نیست؛ Secret با نام COINGLASS_API_KEY لازم است."
+    if not pairs:
+        return "📊 فیوچرز LAB: در CoinGlass قرارداد پشتیبانی‌شده‌ای برنگشت."
+    total_volume = sum((item["volume_usd"] for item in pairs), Decimal(0))
+    total_oi = sum((item["open_interest_usd"] for item in pairs), Decimal(0))
+    known_oi = [item["oi_change_24h"] for item in pairs if item["oi_change_24h"] is not None]
+    weighted_funding = [(item["funding_rate"], item["open_interest_usd"]) for item in pairs if item["funding_rate"] is not None]
+    oi_text = f"{sum(known_oi) / len(known_oi):+.2f}% میانگین صرافی‌ها" if known_oi else "نامشخص"
+    funding_text = "نامشخص"
+    if weighted_funding:
+        weight = sum((oi for _, oi in weighted_funding), Decimal(0))
+        if weight:
+            rate = sum((rate * oi for rate, oi in weighted_funding), Decimal(0)) / weight
+            funding_text = f"{rate:+.4f}% میانگین وزنی OI"
+    long_liq = sum((item["long_liquidation_usd"] for item in pairs), Decimal(0))
+    short_liq = sum((item["short_liquidation_usd"] for item in pairs), Decimal(0))
+    return (f"📊 فیوچرز LAB ({len(pairs)} بازار): حجم ۲۴ساعته {format_usd(total_volume)} | "
+            f"OI {format_usd(total_oi)} | تغییر OI: {oi_text} | فاندینگ: {funding_text} | "
+            f"لیکوییدیشن لانگ/شورت: {format_usd(long_liq)}/{format_usd(short_liq)}")
 
 def load_state():
     if not STATE_FILE.exists():
@@ -195,13 +269,13 @@ def rtl_text(draw, xy, text, font, fill, anchor="ra"):
 
 
 def create_graphic(changes):
-    width, height = 1200, 1700
+    width, height = 1200, 3000
     image = Image.new("RGB", (width, height), "#0B1220")
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((28, 28, width - 28, height - 28), radius=38, fill="#111C2E", outline="#263B56", width=3)
     draw.rounded_rectangle((55, 55, width - 55, 250), radius=30, fill="#172840")
     rtl_text(draw, (width - 90, 105), "دیده‌بان نهنگ‌های LAB", get_font(58, True), "#F3F7FF")
-    rtl_text(draw, (width - 90, 180), "گزارش تغییر موجودی ۱۰ کیف پول برتر", get_font(30), "#A9BED8")
+    rtl_text(draw, (width - 90, 180), "گزارش تغییر موجودی ۲۰ کیف پول برتر", get_font(30), "#A9BED8")
     date_text, time_text = iran_time()
     draw.text((90, 215), f"{fa_digits(date_text)}  |  {fa_digits(time_text)}", font=get_font(23), fill="#90A9C5", anchor="ls")
 
@@ -211,7 +285,7 @@ def create_graphic(changes):
         y = 285
         magnitudes = [abs(item["delta"]) for item in changes if item["delta"] is not None and item["delta"] != 0]
         max_magnitude = max(magnitudes, default=Decimal("1"))
-        for item in changes[:10]:
+        for item in changes[:TOP_HOLDERS_COUNT]:
             positive = item["delta"] is not None and item["delta"] > 0
             negative = item["delta"] is not None and item["delta"] < 0
             accent = "#29E69A" if positive else "#FF6378" if negative else "#F4C66A"
@@ -220,9 +294,9 @@ def create_graphic(changes):
             rank = item["new_rank"] or item["old_rank"] or 0
             title = f"کیف پول رتبه {fa_digits(rank)}"
             if item["entered"]:
-                state = "ورود به ۱۰ کیف پول برتر"
+                state = "ورود به ۲۰ کیف پول برتر"
             elif item["left"]:
-                state = "خروج از ۱۰ کیف پول برتر"
+                state = "خروج از ۲۰ کیف پول برتر"
             elif positive:
                 state = "افزایش موجودی"
             elif negative:
@@ -254,7 +328,7 @@ def create_graphic(changes):
     return OUTPUT_FILE
 
 
-def send_to_telegram(image_path, changes):
+def send_to_telegram(image_path, changes, futures_pairs=None):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
     date_text, time_text = iran_time()
@@ -263,6 +337,7 @@ def send_to_telegram(image_path, changes):
         f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
         f"🔎 تعداد تغییرات شناسایی‌شده: <b>{len(changes)}</b>\n"
         "ℹ️ تغییر موجودی الزاماً به معنی خرید یا فروش نیست.\n"
+        + futures_caption(futures_pairs) + "\n"
         "👥 @lab_chats"
     )
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
@@ -314,7 +389,7 @@ def create_status_graphic(changes, first_run=False):
     draw.rounded_rectangle((24, 24, width - 24, height - 24), radius=42, fill="#101D30", outline="#29415F", width=3)
     draw.rounded_rectangle((55, 55, width - 55, 250), radius=32, fill="#172B45")
     rtl_text(draw, (width - 90, 120), "دیده‌بان نهنگ‌های LAB", get_font(62, True), "#F5F8FF")
-    rtl_text(draw, (width - 90, 195), "گزارش زنده ۱۰ کیف پول برتر", get_font(32), "#AFC4DE")
+    rtl_text(draw, (width - 90, 195), "گزارش زنده ۲۰ کیف پول برتر", get_font(32), "#AFC4DE")
     date_text, time_text = iran_time()
     draw.text((90, 215), f"{fa_digits(date_text)}  |  {fa_digits(time_text)}", font=get_font(24), fill="#AFC4DE", anchor="ls")
 
@@ -323,7 +398,7 @@ def create_status_graphic(changes, first_run=False):
     if first_run:
         headline, detail, accent = "نقطه شروع ثبت شد", "از بررسی بعدی، تغییرات با این آمار مقایسه می‌شوند", "#F4C66A"
     elif not changes:
-        headline, detail, accent = "فعلاً تغییری ثبت نشده", "موجودی و رتبه ۱۰ کیف پول برتر ثابت مانده است", "#29E69A"
+        headline, detail, accent = "فعلاً تغییری ثبت نشده", "موجودی و رتبه ۲۰ کیف پول برتر ثابت مانده است", "#29E69A"
     else:
         headline, detail, accent = "تغییر در کیف پول‌ها شناسایی شد", "جزئیات تغییرات در پیام هشدار جداگانه ارسال شده است", "#F4C66A"
 
@@ -341,13 +416,13 @@ def create_status_graphic(changes, first_run=False):
         rtl_text(draw, ((x1 + x2) // 2, y1 + 140), label, get_font(28, True), "#E7EEF8", anchor="mm")
 
     draw.line((80, 785, width - 80, 785), fill="#2A3D55", width=2)
-    rtl_text(draw, (width - 90, 830), "هر ۵ دقیقه یک‌بار بررسی می‌شود", get_font(25), "#AFC4DE")
+    rtl_text(draw, (width - 90, 830), "هر ۵ دقیقه، ۲۰ کیف پول برتر بررسی می‌شوند", get_font(25), "#AFC4DE")
     draw.text((90, 830), "BSC  •  LAB", font=get_font(22, True), fill="#29E69A", anchor="ls")
     image.save(STATUS_OUTPUT_FILE, "JPEG", quality=95, optimize=True)
     return STATUS_OUTPUT_FILE
 
 
-def send_status(changes, previous_message_id=None, first_run=False):
+def send_status(changes, previous_message_id=None, first_run=False, futures_pairs=None):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
     date_text, time_text = iran_time()
@@ -356,7 +431,7 @@ def send_status(changes, previous_message_id=None, first_run=False):
     if first_run:
         status_line = "نقطه شروع ثبت شد؛ از بررسی بعدی تغییرات قابل مقایسه‌اند."
     elif not changes:
-        status_line = "هیچ تغییری در موجودی یا رتبه ۱۰ کیف پول برتر ثبت نشد."
+        status_line = "هیچ تغییری در موجودی یا رتبه ۲۰ کیف پول برتر ثبت نشد."
     else:
         status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
     caption = (
@@ -364,6 +439,7 @@ def send_status(changes, previous_message_id=None, first_run=False):
         f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
         f"🔎 {status_line}\n"
         "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\n"
+        + futures_caption(futures_pairs) + "\n"
         "👥 @lab_chats"
     )
     image_path = create_status_graphic(changes, first_run=first_run)
@@ -409,6 +485,11 @@ def save_state(holders, status_message_id, alert_message_ids=None):
 
 def main():
     current = fetch_holders()
+    try:
+        futures_pairs = fetch_futures_data()
+    except Exception:
+        logging.exception("CoinGlass futures data could not be fetched; continuing wallet watch")
+        futures_pairs = None
     state = load_state()
     previous = state.get("holders", {})
     first_run = not previous
@@ -422,7 +503,7 @@ def main():
     changes = compare(previous, current) if previous else []
     if changes:
         image_path = create_graphic(changes)
-        new_alert_id = send_to_telegram(image_path, changes)
+        new_alert_id = send_to_telegram(image_path, changes, futures_pairs=futures_pairs)
     else:
         new_alert_id = None
 
@@ -438,6 +519,7 @@ def main():
         changes,
         previous_message_id=state.get("status_message_id"),
         first_run=first_run,
+        futures_pairs=futures_pairs,
     )
     save_state(current, new_status_id, remaining_alert_ids)
 
