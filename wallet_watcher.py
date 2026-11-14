@@ -398,7 +398,7 @@ def create_status_graphic(changes, first_run=False):
     if first_run:
         headline, detail, accent = "نقطه شروع ثبت شد", "از بررسی بعدی، تغییرات با این آمار مقایسه می‌شوند", "#F4C66A"
     elif not changes:
-        headline, detail, accent = "فعلاً تغییری ثبت نشده", "موجودی و رتبه ۱۰ کیف پول برتر ثابت مانده است", "#29E69A"
+        headline, detail, accent = "فعلاً تغییری ثبت نشده", "موجودی و رتبه ۲۰ کیف پول برتر ثابت مانده است", "#29E69A"
     else:
         headline, detail, accent = "تغییر در کیف پول‌ها شناسایی شد", "جزئیات تغییرات در پیام هشدار جداگانه ارسال شده است", "#F4C66A"
 
@@ -431,7 +431,7 @@ def send_status(changes, previous_message_id=None, first_run=False, futures_pair
     if first_run:
         status_line = "نقطه شروع ثبت شد؛ از بررسی بعدی تغییرات قابل مقایسه‌اند."
     elif not changes:
-        status_line = "هیچ تغییری در موجودی یا رتبه ۱۰ کیف پول برتر ثبت نشد."
+        status_line = "هیچ تغییری در موجودی یا رتبه ۲۰ کیف پول برتر ثبت نشد."
     else:
         status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
     caption = (
