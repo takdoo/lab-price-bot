@@ -26,7 +26,7 @@ def fetch_spot_markets():
         p, v, c = dec(row.get("lastPrice")), dec(row.get("quoteVolume")), dec(row.get("priceChangePercent"))
         if p and p > 0:
             markets.append({"exchange":"Binance","price":p,"volume":v or Decimal(0),"change":c})
-    except (requests.RequestException, ValueError, TypeError, AttributeError) as e:
+    except (requests.RequestException, ValueError, TypeError, AttributeError, RuntimeError) as e:
         logging.info("Binance spot unavailable: %s", e)
     try:
         payload = get(BYBIT + "/v5/market/tickers", {"category":"spot","symbol":"LABUSDT"})
