@@ -72,6 +72,7 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
           CMC_PLATFORM: "bsc"
           CMC_PRO_API_KEY: ${{ secrets.CMC_PRO_API_KEY }}
+          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           WHALE_ALERT_LAB: "1000000"
         run: python wallet_watcher.py
 
