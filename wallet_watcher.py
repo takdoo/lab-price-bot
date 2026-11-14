@@ -232,7 +232,7 @@ def futures_caption(pairs):
         weight = sum((oi for _, oi in weighted_funding), Decimal(0))
         if weight:
             rate = sum((rate * oi for rate, oi in weighted_funding), Decimal(0)) / weight
-            funding_text = f"{rate:+.4f}% میانگین وزنی OI"
+            funding_text = f"{rate * Decimal(100):+.4f}% میانگین وزنی OI"
     return (f"📊 فیوچرز LAB ({len(pairs)} بازار عمومی): حجم ۲۴ساعته {format_usd(total_volume)} | "
             f"OI {format_usd(total_oi)} | تغییر OI: {oi_text} | فاندینگ: {funding_text} | "
             "لیکوییدیشن: از API عمومی این نسخه دریافت نمی‌شود.")
