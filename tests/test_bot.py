@@ -84,16 +84,17 @@ class RenderingTests(unittest.TestCase):
 
 
 class TelegramTests(unittest.TestCase):
-    @patch.object(bot, "cleanup_telegram_service_messages", lambda listen_seconds=0: 0)
     @patch.object(bot, "telegram_api")
+    @patch.object(bot, "load_jarvis_state", return_value={})
+    @patch.object(bot, "save_jarvis_state")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
     @patch.object(bot.HTTP, "post")
-    def test_new_photo_message_is_sent_and_pinned(self, mocked_post, mocked_api):
+    def test_new_photo_message_is_sent_and_pinned(self, mocked_post, mocked_api, mocked_save, mocked_load):
         mocked_api.side_effect = [
-            {"id": 123},  # getMe
-            {},           # getChat: no previous pinned message
-            {"message_id": 67890},  # pinChatMessage
+            {"id": 123},
+            {},
+            True,
         ]
         response = Mock()
         response.json.return_value = {"ok": True, "result": {"message_id": 67890}}
@@ -103,13 +104,16 @@ class TelegramTests(unittest.TestCase):
         self.assertEqual(mocked_post.call_count, 1)
         self.assertIn("/sendPhoto", mocked_post.call_args.args[0])
         self.assertEqual(mocked_api.call_args_list[-1].args[0], "pinChatMessage")
+        mocked_save.assert_called_once()
+        self.assertEqual(mocked_save.call_args.args[0]["price_message_ids"], [67890])
 
-    @patch.object(bot, "cleanup_telegram_service_messages", lambda: 0)
     @patch.object(bot, "telegram_api")
+    @patch.object(bot, "load_jarvis_state", return_value={})
+    @patch.object(bot, "save_jarvis_state")
     @patch.object(bot, "BOT_TOKEN", "test-token")
     @patch.object(bot, "CHAT_ID", "@lab_chats")
     @patch.object(bot.HTTP, "post")
-    def test_previous_pinned_lab_post_is_deleted_after_new_pin(self, mocked_post, mocked_api):
+    def test_previous_pinned_lab_post_is_deleted_after_new_pin(self, mocked_post, mocked_api, mocked_save, mocked_load):
         mocked_api.side_effect = [
             {"id": 123},
             {"pinned_message": {
@@ -117,8 +121,7 @@ class TelegramTests(unittest.TestCase):
                 "from": {"id": 123},
                 "caption": "🧪 <b>گزارش لحظه‌ای LAB</b>",
             }},
-            {"message_id": 222},
-            {"message_id": 222},
+            True,
             True,
         ]
         response = Mock()
@@ -126,9 +129,58 @@ class TelegramTests(unittest.TestCase):
         mocked_post.return_value = response
         with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
             bot.send_to_telegram("image.jpg", "🧪 <b>گزارش لحظه‌ای LAB</b>")
-        self.assertEqual(mocked_api.call_args_list[-1].args[0], "deleteMessage")
-        self.assertEqual(mocked_api.call_args_list[-1].args[1]["message_id"], 111)
+        methods = [call.args[0] for call in mocked_api.call_args_list]
+        self.assertIn("deleteMessage", methods)
+        delete_call = mocked_api.call_args_list[methods.index("deleteMessage")]
+        self.assertEqual(delete_call.args[1]["message_id"], 111)
 
+    @patch.object(bot, "telegram_api")
+    @patch.object(bot, "load_jarvis_state", return_value={})
+    @patch.object(bot, "save_jarvis_state")
+    @patch.object(bot, "BOT_TOKEN", "test-token")
+    @patch.object(bot, "CHAT_ID", "@lab_chats")
+    @patch.object(bot.HTTP, "post")
+    def test_previous_price_post_is_deleted_even_if_new_pin_fails(self, mocked_post, mocked_api, mocked_save, mocked_load):
+        mocked_api.side_effect = [
+            {"id": 123},
+            {"pinned_message": {
+                "message_id": 111,
+                "from": {"id": 123},
+                "caption": "گزارش لحظه‌ای LAB",
+            }},
+            RuntimeError("pin permission denied"),
+            True,
+        ]
+        response = Mock()
+        response.json.return_value = {"ok": True, "result": {"message_id": 222}}
+        mocked_post.return_value = response
+        with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
+            bot.send_to_telegram("image.jpg", "گزارش لحظه‌ای LAB")
+        methods = [call.args[0] for call in mocked_api.call_args_list]
+        self.assertIn("deleteMessage", methods)
+
+    @patch.object(bot, "telegram_api")
+    @patch.object(bot, "load_jarvis_state", return_value={"price_message_ids": [111]})
+    @patch.object(bot, "save_jarvis_state")
+    @patch.object(bot, "BOT_TOKEN", "test-token")
+    @patch.object(bot, "CHAT_ID", "@lab_chats")
+    @patch.object(bot.HTTP, "post")
+    def test_tracked_previous_price_post_is_deleted(self, mocked_post, mocked_api, mocked_save, mocked_load):
+        mocked_api.side_effect = [
+            {"id": 123},
+            {},
+            True,
+            True,
+        ]
+        response = Mock()
+        response.json.return_value = {"ok": True, "result": {"message_id": 222}}
+        mocked_post.return_value = response
+        with patch("builtins.open", unittest.mock.mock_open(read_data=b"image")):
+            bot.send_to_telegram("image.jpg", "گزارش لحظه‌ای LAB")
+        methods = [call.args[0] for call in mocked_api.call_args_list]
+        self.assertIn("deleteMessage", methods)
+        delete_call = mocked_api.call_args_list[methods.index("deleteMessage")]
+        self.assertEqual(delete_call.args[1]["message_id"], 111)
 
     def test_service_message_detector_ignores_normal_user_messages(self):
         self.assertTrue(bot.is_telegram_service_message({
