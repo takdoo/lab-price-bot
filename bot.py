@@ -1100,18 +1100,33 @@ def send_to_telegram(image_path, caption):
     if not CHAT_ID:
         raise ValueError("CHAT_ID خالی است")
 
-    # Read the current pinned message before publishing the next LAB update.
-    # After the new post is pinned, remove the previous pin only if it is
-    # demonstrably an older LAB post authored by this same bot.
-    previous_pinned = None
-    bot_id = None
+    # Keep IDs of our own price posts in the persistent JARVIS state branch.
+    # This is more reliable than relying only on Telegram's current pinned post.
+    state = load_jarvis_state()
+    previous_ids = state.get("price_message_ids") or []
+    if not isinstance(previous_ids, list):
+        previous_ids = [previous_ids]
+    previous_ids = list(dict.fromkeys(
+        int(item) for item in previous_ids
+        if str(item).strip().isdigit()
+    ))
+
+    # One-time migration: detect the old bot post created before IDs were tracked.
+    legacy_pinned_id = None
     try:
         me = telegram_api("getMe")
-        bot_id = me.get("id")
         chat = telegram_api("getChat", {"chat_id": CHAT_ID})
-        previous_pinned = chat.get("pinned_message")
+        pinned = chat.get("pinned_message") or {}
+        sender = pinned.get("from") or {}
+        caption_text = pinned.get("caption") or ""
+        if (
+            pinned.get("message_id")
+            and sender.get("id") == me.get("id")
+            and "گزارش لحظه‌ای LAB" in caption_text
+        ):
+            legacy_pinned_id = int(pinned["message_id"])
     except Exception:
-        logging.exception("نتوانستم پیام سنجاق‌شده قبلی را بررسی کنم؛ ارسال پیام جدید ادامه پیدا می‌کند")
+        logging.exception("بررسی پیام سنجاق‌شده قبلی ناموفق بود؛ پاک‌سازی با شناسه‌های ذخیره‌شده ادامه می‌یابد")
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     last_error = None
@@ -1149,43 +1164,43 @@ def send_to_telegram(image_path, caption):
 
             new_message = result.get("result") or {}
             new_message_id = new_message.get("message_id")
+            if not new_message_id:
+                raise RuntimeError("تلگرام پیام قیمت را فرستاد اما message_id برنگرداند")
             logging.info("پیام جدید LAB ارسال شد؛ message_id=%s", new_message_id)
 
-            # Pin the fresh update first, so the group always has a current
-            # price at the top. If permissions are missing, leave the post
-            # visible and report the required admin permissions.
-            pinned = False
             try:
                 telegram_api("pinChatMessage", {
                     "chat_id": CHAT_ID,
                     "message_id": new_message_id,
                     "disable_notification": True,
                 })
-                pinned = True
                 logging.info("پیام جدید LAB سنجاق شد")
             except Exception:
-                logging.exception("پیام ارسال شد اما سنجاق نشد؛ ربات باید اجازه Pin Messages داشته باشد")
+                logging.exception("پیام ارسال شد اما سنجاق نشد؛ پاک‌سازی پیام قبلی همچنان انجام می‌شود")
 
-            # Delete only the previous pinned LAB message, never unrelated
-            # messages pinned by an administrator.
-            if pinned and previous_pinned:
-                old_id = previous_pinned.get("message_id")
-                old_from = previous_pinned.get("from") or {}
-                old_caption = previous_pinned.get("caption") or ""
-                is_our_old_lab_post = (
-                    old_id
-                    and old_from.get("id") == bot_id
-                    and "گزارش لحظه‌ای LAB" in old_caption
-                )
-                if is_our_old_lab_post and old_id != new_message_id:
-                    try:
-                        telegram_api("deleteMessage", {
-                            "chat_id": CHAT_ID,
-                            "message_id": old_id,
-                        })
-                        logging.info("پیام قبلی LAB حذف شد؛ message_id=%s", old_id)
-                    except Exception:
-                        logging.exception("پیام قبلی LAB حذف نشد؛ ربات باید اجازه Delete Messages داشته باشد")
+            # Delete only previously tracked price posts, plus the one verified
+            # legacy pinned LAB post. Do not depend on successful pinning.
+            old_ids = list(dict.fromkeys(previous_ids + ([legacy_pinned_id] if legacy_pinned_id else [])))
+            remaining_ids = []
+            for old_id in old_ids:
+                if int(old_id) == int(new_message_id):
+                    continue
+                try:
+                    telegram_api("deleteMessage", {
+                        "chat_id": CHAT_ID,
+                        "message_id": int(old_id),
+                    })
+                    logging.info("پیام قبلی قیمت LAB حذف شد؛ message_id=%s", old_id)
+                except Exception as error:
+                    message = str(error).lower()
+                    if "message to delete not found" in message or "message_id_invalid" in message:
+                        logging.info("پیام قبلی قیمت قبلاً حذف شده است؛ message_id=%s", old_id)
+                    else:
+                        logging.warning("پیام قبلی قیمت حذف نشد؛ message_id=%s | %s", old_id, error)
+                        remaining_ids.append(int(old_id))
+
+            state["price_message_ids"] = remaining_ids + [int(new_message_id)]
+            save_jarvis_state(state)
             return
 
         except (requests.Timeout, requests.ConnectionError) as error:
