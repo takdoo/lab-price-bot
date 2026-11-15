@@ -64,7 +64,7 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JARVIS_ADMIN_ID: "5477408842"
-          JARVIS_LISTEN_SECONDS: "240"
+          JARVIS_LISTEN_SECONDS: "0"
           JARVIS_STATE_FILE: "jarvis_state.json"
         run: |
           for attempt in 1 2 3; do
