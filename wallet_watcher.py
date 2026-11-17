@@ -25,7 +25,7 @@ STATUS_OUTPUT_FILE = Path("lab_whale_status.jpg")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("CHAT_ID", "@lab_chats").strip()
 ALERT_THRESHOLD = Decimal(os.getenv("WHALE_ALERT_LAB", "1000000"))
-TOP_HOLDERS_COUNT = 20
+TOP_HOLDERS_COUNT = 10
 TIMEOUT = (10, 30)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -415,102 +415,94 @@ def delete_telegram_message(message_id):
     return False
 
 
-def create_status_graphic(changes, first_run=False):
-    width, height = 1200, 900
+def build_report_rows(previous, holders):
+    """Return each current top-ten wallet and its balance delta from the prior snapshot."""
+    old_ranks = {address: rank for rank, address in enumerate(previous, start=1)}
+    rows = []
+    for rank, item in enumerate(holders, start=1):
+        address = item["address"]
+        balance = Decimal(str(item["balance"]))
+        old_value = previous.get(address)
+        old_balance = Decimal(str(old_value)) if old_value is not None else None
+        rows.append({"rank": rank, "old_rank": old_ranks.get(address), "address": address,
+                     "balance": balance, "delta": balance - old_balance if old_balance is not None else None})
+    return rows
+
+
+def create_status_graphic(holders, previous=None, first_run=False):
+    previous = previous or {}
+    rows = build_report_rows(previous, holders)
+    width, height = 1200, 1720
     image = Image.new("RGB", (width, height), "#07111F")
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((24, 24, width - 24, height - 24), radius=42, fill="#101D30", outline="#29415F", width=3)
-    draw.rounded_rectangle((55, 55, width - 55, 250), radius=32, fill="#172B45")
-    rtl_text(draw, (width - 90, 120), "دیده‌بان نهنگ‌های LAB", get_font(62, True), "#F5F8FF")
-    rtl_text(draw, (width - 90, 195), "گزارش زنده ۲۰ کیف پول برتر", get_font(32), "#AFC4DE")
+    draw.rounded_rectangle((55, 55, width - 55, 245), radius=32, fill="#172B45")
+    rtl_text(draw, (width - 90, 115), "دیده‌بان نهنگ‌های LAB", get_font(58, True), "#F5F8FF")
+    rtl_text(draw, (width - 90, 190), "موجودی ۱۰ کیف پول بزرگ و مقایسه ۵ دقیقه‌ای", get_font(29), "#AFC4DE")
     date_text, time_text = iran_time()
-    draw.text((90, 215), f"{fa_digits(date_text)}  |  {fa_digits(time_text)}", font=get_font(24), fill="#AFC4DE", anchor="ls")
-
-    balance_changes = sum(1 for item in changes if item["delta"] is not None and item["delta"] != 0)
-    rank_changes = sum(1 for item in changes if item["old_rank"] != item["new_rank"])
-    if first_run:
-        headline, detail, accent = "نقطه شروع ثبت شد", "از بررسی بعدی، تغییرات با این آمار مقایسه می‌شوند", "#F4C66A"
-    elif not changes:
-        headline, detail, accent = "فعلاً تغییری ثبت نشده", "موجودی و رتبه ۲۰ کیف پول برتر ثابت مانده است", "#29E69A"
-    else:
-        headline, detail, accent = "تغییر در کیف پول‌ها شناسایی شد", "جزئیات تغییرات در پیام هشدار جداگانه ارسال شده است", "#F4C66A"
-
-    draw.rounded_rectangle((70, 300, width - 70, 500), radius=30, fill="#14283B", outline=accent, width=3)
-    rtl_text(draw, (width - 105, 375), headline, get_font(43, True), accent)
-    rtl_text(draw, (width - 105, 445), detail, get_font(26), "#D5E2F1")
-
-    cards = [
-        (75, 550, 555, 730, "#17352F", "#29E69A", fa_digits(balance_changes), "تغییر موجودی"),
-        (645, 550, 1125, 730, "#302A20", "#F4C66A", fa_digits(rank_changes), "تغییر رتبه"),
-    ]
-    for x1, y1, x2, y2, panel, accent_color, number, label in cards:
-        draw.rounded_rectangle((x1, y1, x2, y2), radius=28, fill=panel, outline=accent_color, width=2)
-        draw.text(((x1 + x2) // 2, y1 + 70), number, font=get_font(58, True), fill=accent_color, anchor="mm")
-        rtl_text(draw, ((x1 + x2) // 2, y1 + 140), label, get_font(28, True), "#E7EEF8", anchor="mm")
-
-    draw.line((80, 785, width - 80, 785), fill="#2A3D55", width=2)
-    rtl_text(draw, (width - 90, 830), "هر ۵ دقیقه، ۲۰ کیف پول برتر بررسی می‌شوند", get_font(25), "#AFC4DE")
-    draw.text((90, 830), "BSC  •  LAB", font=get_font(22, True), fill="#29E69A", anchor="ls")
+    draw.text((90, 205), f"{fa_digits(date_text)}  |  {fa_digits(time_text)}", font=get_font(23), fill="#AFC4DE", anchor="ls")
+    changed = sum(1 for row in rows if row["delta"] is not None and row["delta"] != 0)
+    headline = "ثبت موجودی اولیه؛ مقایسه از نوبت بعد" if first_run else (f"{fa_digits(changed)} کیف پول دارای تغییر موجودی" if changed else "در ۵ دقیقه اخیر تغییری در موجودی ثبت نشد")
+    rtl_text(draw, (width - 90, 295), headline, get_font(31, True), "#F4C66A" if changed or first_run else "#29E69A")
+    y = 345
+    for row in rows:
+        delta = row["delta"]
+        if delta is None:
+            accent, panel, delta_text = "#F4C66A", "#302A20", "مبنای قبلی ندارد"
+        elif delta > 0:
+            accent, panel, delta_text = "#29E69A", "#17352F", "+" + fmt_amount(delta) + " LAB"
+        elif delta < 0:
+            accent, panel, delta_text = "#FF6378", "#321F2B", "−" + fmt_amount(abs(delta)) + " LAB"
+        else:
+            accent, panel, delta_text = "#AFC4DE", "#19283A", "بدون تغییر"
+        draw.rounded_rectangle((65, y, width - 65, y + 112), radius=22, fill=panel, outline=accent, width=2)
+        rtl_text(draw, (width - 95, y + 35), f"رتبه {fa_digits(row['rank'])}  |  {fmt_amount(row['balance'])} LAB", get_font(27, True), "#F4F7FC")
+        rtl_text(draw, (width - 95, y + 80), delta_text, get_font(24, True), accent)
+        short = row["address"][:8] + "…" + row["address"][-6:]
+        draw.text((95, y + 43), short, font=get_font(20), fill="#9EB3CC", anchor="ls")
+        if row["old_rank"] is not None and row["old_rank"] != row["rank"]:
+            draw.text((95, y + 83), f"رتبه قبلی: {fa_digits(row['old_rank'])}", font=get_font(18), fill="#F4C66A", anchor="ls")
+        y += 121
+    draw.line((75, 1585, width - 75, 1585), fill="#2A3D55", width=2)
+    rtl_text(draw, (width - 90, 1630), "تغییر موجودی الزاماً به معنی خرید یا فروش نیست", get_font(24), "#A9BED8")
+    draw.text((90, 1630), "منبع: CoinMarketCap | BSC • LAB", font=get_font(18), fill="#7189A5", anchor="ls")
     image.save(STATUS_OUTPUT_FILE, "JPEG", quality=95, optimize=True)
     return STATUS_OUTPUT_FILE
 
 
-def send_status(changes, previous_message_id=None, first_run=False, futures_pairs=None):
+def send_status(holders, changes, previous, first_run=False, futures_pairs=None):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
     date_text, time_text = iran_time()
     balance_changes = sum(1 for item in changes if item["delta"] is not None and item["delta"] != 0)
     rank_changes = sum(1 for item in changes if item["old_rank"] != item["new_rank"])
-    if first_run:
-        status_line = "نقطه شروع ثبت شد؛ از بررسی بعدی تغییرات قابل مقایسه‌اند."
-    elif not changes:
-        status_line = "هیچ تغییری در موجودی یا رتبه ۲۰ کیف پول برتر ثبت نشد."
-    else:
-        status_line = f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه شناسایی شد."
+    status_line = "موجودی اولیه ثبت شد؛ مقایسه از اجرای بعدی آغاز می‌شود." if first_run else f"{fa_digits(balance_changes)} تغییر موجودی و {fa_digits(rank_changes)} تغییر رتبه"
     caption = (
-        "<b>🐳 وضعیت دوره‌ای دیده‌بان LAB</b>\n"
+        "<b>🐳 دیده‌بان نهنگ‌های LAB | ۱۰ کیف پول برتر</b>\n"
         f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
         f"🔎 {status_line}\n"
-        "ℹ️ تغییر موجودی لزوماً به معنی خرید یا فروش نیست.\n"
+        "📌 موجودی هر آدرس با snapshot قبلی (۵ دقیقه قبل) مقایسه شده است.\n"
+        "ℹ️ تغییر موجودی به‌تنهایی اثبات خرید یا فروش نیست.\n"
         + futures_caption(futures_pairs) + "\n"
         "👥 @lab_chats"
     )
-    image_path = create_status_graphic(changes, first_run=first_run)
+    image_path = create_status_graphic(holders, previous=previous, first_run=first_run)
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     with open(image_path, "rb") as photo:
-        response = requests.post(
-            url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
-            files={"photo": photo},
-            timeout=TIMEOUT,
-        )
+        response = requests.post(url, data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"}, files={"photo": photo}, timeout=TIMEOUT)
     response.raise_for_status()
     result = response.json()
     if not result.get("ok"):
         raise RuntimeError(f"Telegram status sendPhoto failed: {result.get('description')}")
-    new_message_id = result["result"]["message_id"]
+    message_id = result["result"]["message_id"]
+    logging.info("گزارش ۱۰ کیف پول LAB ارسال شد؛ message_id=%s", message_id)
+    return message_id
 
-    # Delete only the previous periodic status post; separate whale alerts remain in the group.
-    if previous_message_id:
-        delete_url = f"https://api.telegram.org/bot{BOT_TOKEN}/deleteMessage"
-        try:
-            deleted = requests.post(
-                delete_url,
-                data={"chat_id": CHAT_ID, "message_id": previous_message_id},
-                timeout=TIMEOUT,
-            )
-            deleted.raise_for_status()
-            if not deleted.json().get("ok"):
-                logging.warning("پیام وضعیت قبلی حذف نشد: %s", deleted.text[:300])
-        except requests.RequestException as exc:
-            logging.warning("حذف پیام وضعیت قبلی ناموفق بود: %s", exc)
-    return new_message_id
-
-def save_state(holders, status_message_id, alert_message_ids=None):
+def save_state(holders, status_message_id, pending_delete_message_ids=None):
     payload = {
         "holders": {item["address"]: item["balance"] for item in holders},
         "status_message_id": status_message_id,
-        "alert_message_ids": list(alert_message_ids or []),
+        "pending_delete_message_ids": list(pending_delete_message_ids or []),
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
     }
     STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -525,38 +517,38 @@ def main():
         futures_pairs = None
     state = load_state()
     previous = state.get("holders", {})
+    if not isinstance(previous, dict):
+        previous = {}
     first_run = not previous
-
-    # Older state files have no alert ID; keep backward compatibility with them.
-    previous_alert_ids = state.get("alert_message_ids")
-    if not isinstance(previous_alert_ids, list):
-        previous_alert_ids = [state.get("alert_message_id")]
-    pending_alert_ids = [message_id for message_id in previous_alert_ids if message_id]
-
     changes = compare(previous, current) if previous else []
-    if changes:
-        image_path = create_graphic(changes)
-        new_alert_id = send_to_telegram(image_path, changes, futures_pairs=futures_pairs)
-    else:
-        new_alert_id = None
+    new_status_id = send_status(current, changes, previous, first_run=first_run, futures_pairs=futures_pairs)
 
-    # Delete only alert photo IDs recorded by this watcher. Retry failures next run.
-    remaining_alert_ids = []
-    for message_id in pending_alert_ids:
+    # Carry forward old alert IDs and retry any message whose deletion failed.
+    pending = state.get("pending_delete_message_ids", [])
+    if not isinstance(pending, list):
+        pending = []
+    old_alerts = state.get("alert_message_ids", [])
+    if not isinstance(old_alerts, list):
+        old_alerts = [state.get("alert_message_id")]
+    pending.extend(old_alerts)
+    old_status_id = state.get("status_message_id")
+    if old_status_id:
+        pending.append(old_status_id)
+
+    remaining, seen = [], set()
+    for message_id in pending:
+        if not message_id or message_id == new_status_id or message_id in seen:
+            continue
+        seen.add(message_id)
         if not delete_telegram_message(message_id):
-            remaining_alert_ids.append(message_id)
-    if new_alert_id:
-        remaining_alert_ids.append(new_alert_id)
-
-    new_status_id = send_status(
-        changes,
-        previous_message_id=state.get("status_message_id"),
-        first_run=first_run,
-        futures_pairs=futures_pairs,
+            remaining.append(message_id)
+    save_state(current, new_status_id, remaining)
+    logging.info(
+        "گزارش ۱۰ کیف پول تکمیل شد؛ تغییر موجودی=%s، تغییر رتبه=%s، پیام‌های در انتظار حذف=%s",
+        sum(1 for item in changes if item["delta"] is not None and item["delta"] != 0),
+        sum(1 for item in changes if item["old_rank"] != item["new_rank"]),
+        len(remaining),
     )
-    save_state(current, new_status_id, remaining_alert_ids)
-
-
 
 
 if __name__ == "__main__":
