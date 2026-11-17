@@ -11,8 +11,6 @@ on:
   pull_request:
     branches:
       - main
-  schedule:
-    - cron: "*/5 * * * *"
   repository_dispatch:
     types: [lab-price-update]
 
