@@ -2,7 +2,7 @@ import unittest
 from decimal import Decimal
 from unittest.mock import patch
 
-from wallet_watcher import compare, delete_telegram_message, fetch_holders, fetch_futures_data, futures_caption, TOP_HOLDERS_COUNT
+from wallet_watcher import build_report_rows, compare, delete_telegram_message, fetch_holders, fetch_futures_data, futures_caption, TOP_HOLDERS_COUNT
 
 
 class CompareTopHoldersTests(unittest.TestCase):
@@ -10,6 +10,18 @@ class CompareTopHoldersTests(unittest.TestCase):
         self.a = "0x" + "a" * 40
         self.b = "0x" + "b" * 40
         self.c = "0x" + "c" * 40
+
+    def test_report_rows_show_current_balance_and_delta_for_same_address(self):
+        old = {self.a: "100", self.b: "90"}
+        current = [
+            {"address": self.a, "balance": "125"},
+            {"address": self.b, "balance": "90"},
+        ]
+        rows = build_report_rows(old, current)
+        self.assertEqual(rows[0]["balance"], Decimal("125"))
+        self.assertEqual(rows[0]["delta"], Decimal("25"))
+        self.assertEqual(rows[1]["delta"], Decimal("0"))
+        self.assertEqual(TOP_HOLDERS_COUNT, 10)
 
     def test_no_changes(self):
         old = {self.a: "100", self.b: "90"}
@@ -100,7 +112,7 @@ class CompareTopHoldersTests(unittest.TestCase):
         self.assertIn("API عمومی", futures_caption(pairs))
         self.assertIn("لیکوییدیشن", futures_caption(pairs))
     @patch("wallet_watcher.requests.post")
-    def test_holder_fetch_uses_bnb_slug_and_parses_top_twenty(self, mocked_post):
+    def test_holder_fetch_uses_bnb_slug_and_returns_top_ten(self, mocked_post):
         rows = [
             {"walletAddress": "0x" + format(i, "040x"), "actualBalance": str(1000 - i)}
             for i in range(20)
