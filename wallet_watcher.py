@@ -448,7 +448,7 @@ def create_status_graphic(holders, previous=None, first_run=False):
     for row in rows:
         delta = row["delta"]
         if delta is None:
-            accent, panel, delta_text = "#F4C66A", "#302A20", "مبنای قبلی ندارد"
+            accent, panel, delta_text = "#F4C66A", "#302A20", "در snapshot قبلی جزو ۱۰ تای اول نبود"
         elif delta > 0:
             accent, panel, delta_text = "#29E69A", "#17352F", "+" + fmt_amount(delta) + " LAB"
         elif delta < 0:
@@ -519,6 +519,8 @@ def main():
     previous = state.get("holders", {})
     if not isinstance(previous, dict):
         previous = {}
+    # Migrate the old 20-wallet snapshot without false exits for ranks 11-20.
+    previous = dict(list(previous.items())[:TOP_HOLDERS_COUNT])
     first_run = not previous
     changes = compare(previous, current) if previous else []
     new_status_id = send_status(current, changes, previous, first_run=first_run, futures_pairs=futures_pairs)
