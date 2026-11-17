@@ -2,6 +2,11 @@ name: LAB Premium Price Bot
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "*/5 * * * *"
   repository_dispatch:
     types: [lab-price-update]
   push:
@@ -48,7 +53,7 @@ jobs:
           test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
 
       - name: Validate Python syntax
-        run: python -m compileall -q bot.py tests
+        run: python -m compileall -q bot.py wallet_watcher.py tests
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
@@ -57,6 +62,11 @@ jobs:
         run: |
           git fetch origin refs/heads/lab-jarvis-state:refs/remotes/origin/lab-jarvis-state
           git show origin/lab-jarvis-state:jarvis_state.json > jarvis_state.json
+
+      - name: Load persistent wallet snapshot
+        run: |
+          git fetch origin refs/heads/lab-wallet-state:refs/remotes/origin/lab-wallet-state
+          git show origin/lab-wallet-state:top_holders.json > top_holders.json
 
       - name: Send new LAB price message
         env:
@@ -91,3 +101,27 @@ jobs:
           else
             echo "JARVIS state unchanged."
           fi
+
+      - name: Send top-ten LAB wallet balance report
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+          CMC_PRO_API_KEY: ${{ secrets.CMC_PRO_API_KEY }}
+          WHALE_ALERT_LAB: "1000000"
+        run: python wallet_watcher.py
+
+      - name: Save persistent wallet snapshot
+        if: always() && hashFiles('top_holders.json') != ''
+        run: |
+          git worktree add /tmp/lab-wallet-state origin/lab-wallet-state
+          cp top_holders.json /tmp/lab-wallet-state/top_holders.json
+          git -C /tmp/lab-wallet-state config user.name "github-actions[bot]"
+          git -C /tmp/lab-wallet-state config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/lab-wallet-state add top_holders.json
+          if ! git -C /tmp/lab-wallet-state diff --cached --quiet; then
+            git -C /tmp/lab-wallet-state commit -m "Update top-ten LAB wallet snapshot"
+            git -C /tmp/lab-wallet-state push origin HEAD:lab-wallet-state
+          else
+            echo "Wallet snapshot unchanged."
+          fi
+
