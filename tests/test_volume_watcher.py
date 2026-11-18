@@ -1,7 +1,7 @@
 import unittest
 from decimal import Decimal
 from unittest.mock import Mock, patch
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import volume_watcher as vw
 
@@ -21,16 +21,18 @@ class VolumeWatcherTests(unittest.TestCase):
         self.assertEqual(data["sell_usd"], Decimal("15"))
         self.assertEqual(data["trades"], 2)
 
-    def test_futures_aggtrades_classify_aggressor(self):
+    def test_gate_futures_trades_split_by_signed_size(self):
         now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
-        ms = int(now.timestamp() * 1000)
-        response = Mock()
-        response.json.return_value = [
-            {"T": ms, "p": "2", "q": "10", "m": False, "a": 1},
-            {"T": ms, "p": "3", "q": "5", "m": True, "a": 2},
+        contract_response = Mock()
+        contract_response.json.return_value = {"quanto_multiplier": "1"}
+        contract_response.raise_for_status.return_value = None
+        trades_response = Mock()
+        trades_response.json.return_value = [
+            {"create_time": str(int(now.timestamp())), "price": "2", "size": "10"},
+            {"create_time": str(int(now.timestamp())), "price": "3", "size": "-5"},
         ]
-        response.raise_for_status.return_value = None
-        with patch.object(vw.requests, "get", return_value=response):
+        trades_response.raise_for_status.return_value = None
+        with patch.object(vw.requests, "get", side_effect=[contract_response, trades_response]):
             data = vw.fetch_futures_trades(now)
         self.assertEqual(data["buy_usd"], Decimal("20"))
         self.assertEqual(data["sell_usd"], Decimal("15"))
@@ -38,12 +40,10 @@ class VolumeWatcherTests(unittest.TestCase):
         self.assertEqual(data["sell_count"], 1)
 
     def test_report_discloses_markets_and_five_minute_window(self):
-        spot = vw.empty_market()
-        futures = vw.empty_market()
-        report = vw.build_report(spot, futures, datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc))
+        report = vw.build_report(vw.empty_market(), vw.empty_market(), datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc))
         self.assertIn("۵ دقیقه", report)
         self.assertIn("Gate.io", report)
-        self.assertIn("Binance", report)
+        self.assertIn("Perpetual", report)
         self.assertIn("توصیه مالی نیست", report)
 
     def test_report_shows_net_aggressor_pressure(self):
@@ -52,6 +52,11 @@ class VolumeWatcherTests(unittest.TestCase):
         section = vw.market_section("Spot", spot)
         self.assertIn("برتری خریداران", section)
         self.assertIn("$40.00", section)
+
+    def test_load_message_id_uses_saved_state(self):
+        with patch.object(vw, "STATE_FILE") as state_file:
+            state_file.read_text.return_value = "999"
+            self.assertEqual(vw.load_message_id(), 999)
 
 
 if __name__ == "__main__":
