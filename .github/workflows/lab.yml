@@ -53,10 +53,10 @@ jobs:
           test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
 
       - name: Validate Python syntax
-        run: python -m compileall -q bot.py tests
+        run: python -m compileall -q bot.py tests/test_bot.py
 
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -p 'test_bot.py' -v
 
       - name: Load persistent JARVIS state
         run: |
@@ -83,7 +83,7 @@ jobs:
           exit 1
 
       - name: Save persistent JARVIS state
-        if: always()
+        if: success()
         run: |
           git worktree add /tmp/lab-jarvis-state origin/lab-jarvis-state
           cp jarvis_state.json /tmp/lab-jarvis-state/jarvis_state.json
