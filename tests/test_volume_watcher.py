@@ -64,6 +64,32 @@ class VolumeWatcherTests(unittest.TestCase):
             state_file.read_text.return_value = "999"
             self.assertEqual(vw.load_message_id(), 999)
 
+    def test_publish_sends_new_before_deleting_old_and_saves_new_id(self):
+        with patch.object(vw, "BOT_TOKEN", "token"), \
+             patch.object(vw, "CHAT_ID", "@labcoinss"), \
+             patch.object(vw, "load_message_id", return_value=111), \
+             patch.object(vw, "telegram_call", side_effect=[
+                 {"message_id": 222}, {}
+             ]) as telegram, \
+             patch.object(vw, "save_message_id") as save:
+            result = vw.publish_report("new report")
+        self.assertEqual(result, 222)
+        self.assertEqual(telegram.call_args_list[0].args[0], "sendMessage")
+        self.assertEqual(telegram.call_args_list[1].args[0], "deleteMessage")
+        save.assert_called_once_with(222)
+
+    def test_publish_keeps_old_message_if_new_send_fails(self):
+        with patch.object(vw, "BOT_TOKEN", "token"), \
+             patch.object(vw, "CHAT_ID", "@labcoinss"), \
+             patch.object(vw, "load_message_id", return_value=111), \
+             patch.object(vw, "telegram_call", side_effect=RuntimeError("send failed")) as telegram, \
+             patch.object(vw, "save_message_id") as save:
+            with self.assertRaises(RuntimeError):
+                vw.publish_report("new report")
+        telegram.assert_called_once()
+        self.assertEqual(telegram.call_args.args[0], "sendMessage")
+        save.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
