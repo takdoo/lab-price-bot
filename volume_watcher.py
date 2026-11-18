@@ -195,7 +195,7 @@ def publish_report(text):
             telegram_call("deleteMessage", {"chat_id": CHAT_ID, "message_id": previous_id})
             logging.info("Deleted previous volume report (message_id=%s)", previous_id)
         except Exception:
-            logging.warning("Could not delete previous report (message_id=%s); will send replacement", previous_id)
+            logging.exception("Could not delete previous report (message_id=%s); will send replacement", previous_id)
     sent = telegram_call(
         "sendMessage",
         {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
