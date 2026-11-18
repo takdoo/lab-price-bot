@@ -194,12 +194,9 @@ def publish_report(text):
     if not BOT_TOKEN or not CHAT_ID:
         raise RuntimeError("BOT_TOKEN or CHAT_ID is missing")
     previous_id = load_message_id()
-    if previous_id is not None:
-        try:
-            telegram_call("deleteMessage", {"chat_id": CHAT_ID, "message_id": previous_id})
-            logging.info("Deleted previous volume report (message_id=%s)", previous_id)
-        except Exception:
-            logging.exception("Could not delete previous report (message_id=%s); will send replacement", previous_id)
+
+    # Publish the replacement first. If Telegram rejects the new message,
+    # keep the previous report visible and retain its ID for the next run.
     sent = telegram_call(
         "sendMessage",
         {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
@@ -207,8 +204,23 @@ def publish_report(text):
     message_id = sent.get("message_id")
     if not message_id:
         raise RuntimeError("Telegram sendMessage returned no message_id")
+    logging.info("New volume report sent to %s (message_id=%s)", CHAT_ID, message_id)
+
+    # Delete only the previously tracked volume report, never unrelated group messages.
+    if previous_id is not None and int(previous_id) != int(message_id):
+        try:
+            telegram_call("deleteMessage", {"chat_id": CHAT_ID, "message_id": int(previous_id)})
+            logging.info("Deleted previous volume report (message_id=%s)", previous_id)
+        except Exception as error:
+            message = str(error).lower()
+            if "message to delete not found" in message or "message_id_invalid" in message:
+                logging.info("Previous volume report was already deleted (message_id=%s)", previous_id)
+            else:
+                logging.exception("Could not delete previous volume report (message_id=%s)", previous_id)
+
+    # Persist the new ID even if deleting the old message failed, so the next run
+    # can retry cleanup without ever losing track of the latest report.
     save_message_id(message_id)
-    logging.info("Volume report sent to %s (message_id=%s)", CHAT_ID, message_id)
     return message_id
 
 
