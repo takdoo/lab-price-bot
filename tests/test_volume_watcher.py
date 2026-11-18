@@ -44,7 +44,7 @@ class VolumeWatcherTests(unittest.TestCase):
         report = vw.build_report(vw.empty_market(), vw.empty_market(), datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc))
         self.assertIn("۵ دقیقه", report)
         self.assertIn("Gate.io", report)
-        self.assertIn("Perpetual", report)
+        self.assertIn("Futures", report)
         self.assertIn("توصیه مالی نیست", report)
 
     def test_report_shows_net_aggressor_pressure(self):
