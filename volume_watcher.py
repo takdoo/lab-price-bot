@@ -73,6 +73,12 @@ def fetch_futures_trades(now=None):
     multiplier = dec(contract.get("quanto_multiplier"))
     if multiplier <= 0:
         raise ValueError("Gate.io LAB_USDT futures contract multiplier is missing or invalid")
+    logging.info(
+        "Gate.io futures contract: name=%s type=%s status=%s multiplier=%s",
+        contract.get("name"), contract.get("type"), contract.get("status"), multiplier,
+    )
+    if contract.get("status") != "trading":
+        raise ValueError(f"Gate.io LAB_USDT futures contract is not trading: {contract.get('status')}")
 
     response = requests.get(
         GATE_FUTURES_TRADES_URL,
@@ -84,9 +90,12 @@ def fetch_futures_trades(now=None):
     if not isinstance(payload, list):
         raise ValueError("Gate.io futures trades response is not a list")
 
+    logging.info("Gate.io futures returned %s raw trades for LAB_USDT", len(payload))
     result = empty_market()
     for trade in payload:
-        ts = dec(trade.get("create_time_ms")) / Decimal(1000) if trade.get("create_time_ms") else dec(trade.get("create_time"))
+        # Gate futures create_time_ms is Unix seconds with millisecond decimals
+        # (e.g. 1795099200.123), not epoch milliseconds.
+        ts = dec(trade.get("create_time_ms")) if trade.get("create_time_ms") is not None else dec(trade.get("create_time"))
         if ts < start or ts > end:
             continue
         size = dec(trade.get("size"))
@@ -98,6 +107,10 @@ def fetch_futures_trades(now=None):
         result["trades"] += 1
         result[side + "_usd"] += quote
         result[side + "_count"] += 1
+    logging.info(
+        "Gate.io futures parsed %s trades in five-minute window (buy=%s sell=%s)",
+        result["trades"], result["buy_usd"], result["sell_usd"],
+    )
     if len(payload) >= 1000:
         result["possibly_truncated"] = True
     return result
