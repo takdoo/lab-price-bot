@@ -1,0 +1,45 @@
+name: LAB Volume Watcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-volume-watcher
+  cancel-in-progress: true
+
+jobs:
+  publish-volume-report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate configuration
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+        run: |
+          test -n "$BOT_TOKEN" || { echo "::error::BOT_TOKEN is missing"; exit 1; }
+          test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
+
+      - name: Validate and test volume watcher
+        run: |
+          python -m compileall -q volume_watcher.py tests/test_volume_watcher.py
+          python -m unittest tests.test_volume_watcher -v
+
+      - name: Publish five-minute spot and futures report
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+        run: python volume_watcher.py
