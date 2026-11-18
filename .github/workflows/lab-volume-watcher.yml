@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "volume_watcher.py"
+      - "tests/test_volume_watcher.py"
+      - ".github/workflows/lab-volume-watcher.yml"
 
 permissions:
   contents: read
