@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: lab-volume-watcher
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish-volume-report:
@@ -30,6 +30,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Restore previous Telegram message state
+        uses: actions/cache@v4
+        with:
+          path: .volume-state
+          key: ${{ runner.os }}-lab-volume-state-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-lab-volume-state-
 
       - name: Validate configuration
         env:
@@ -49,4 +57,5 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: "@labcoinss"
+          INITIAL_MESSAGE_ID: "3475"
         run: python volume_watcher.py
