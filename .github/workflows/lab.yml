@@ -10,7 +10,6 @@ on:
     paths:
       - 'bot.py'
       - 'tests/test_bot.py'
-      - 'tests/test_*.py'
       - '.github/workflows/lab.yml'
       - 'requirements.txt'
 
