@@ -39,10 +39,9 @@ jobs:
           git fetch origin refs/heads/lab-wallet-state:refs/remotes/origin/lab-wallet-state
           git show origin/lab-wallet-state:top_holders.json > top_holders.json
 
-      - name: Install Persian text support
+      - name: Verify Persian font support
         run: |
-          sudo apt-get install -y fonts-dejavu-core fonts-noto-core libraqm0 libraqm-dev libharfbuzz0b libfribidi0
-          fc-cache -f
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
           fc-match "DejaVu Sans"
 
       - name: Setup Python
