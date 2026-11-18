@@ -28,8 +28,8 @@ class VolumeWatcherTests(unittest.TestCase):
         contract_response.raise_for_status.return_value = None
         trades_response = Mock()
         trades_response.json.return_value = [
-            {"create_time_ms": now.timestamp() + 0.125, "price": "2", "size": "10"},
-            {"create_time_ms": now.timestamp() + 0.250, "price": "3", "size": "-5"},
+            {"create_time_ms": now.timestamp() - 0.125, "price": "2", "size": "10"},
+            {"create_time_ms": now.timestamp() - 0.250, "price": "3", "size": "-5"},
         ]
         trades_response.raise_for_status.return_value = None
         with patch.object(vw.requests, "get", side_effect=[contract_response, trades_response]):
