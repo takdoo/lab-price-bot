@@ -158,7 +158,7 @@ def build_report(spot, futures, now=None):
         "⏱ <b>فقط ۵ دقیقه اخیر</b>\n\n"
         + market_section("🟦 <b>اسپات (Spot) | Gate.io</b>", spot)
         + "\n\n"
-        + market_section("🟣 <b>فیوچرز (Futures) | Gate.io</b>", futures)
+        + market_section("🟣 <b>فیوچرز (Futures) | Gate.io (قرارداد اهرمی)</b>", futures)
         + f"\n\n🕒 ساعت ایران: {iran_now.strftime('%Y/%m/%d - %H:%M:%S')}\n"
         "ℹ️ خلاصه‌اش: این گزارش می‌گه تو همین ۵ دقیقه کفه خرید سنگین‌تر بوده یا فروش؛ پیش‌بینی قیمت نیست."
     )
