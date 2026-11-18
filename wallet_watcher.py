@@ -283,14 +283,19 @@ def compare(old, new):
 
 
 def get_font(size, bold=False):
+    # DejaVu Sans has reliable Persian + Latin coverage on GitHub Ubuntu runners.
+    # Prefer it over Noto Naskh here to avoid missing-glyph tofu in the generated report.
     candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf" if bold else "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf",
         "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
     for path in candidates:
         if os.path.exists(path):
-            return ImageFont.truetype(path, size=size)
+            try:
+                return ImageFont.truetype(path, size=size, layout_engine=ImageFont.Layout.RAQM)
+            except (AttributeError, ValueError):
+                return ImageFont.truetype(path, size=size)
     return ImageFont.load_default()
 
 
