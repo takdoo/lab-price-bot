@@ -28,8 +28,8 @@ class VolumeWatcherTests(unittest.TestCase):
         contract_response.raise_for_status.return_value = None
         trades_response = Mock()
         trades_response.json.return_value = [
-            {"create_time": str(int(now.timestamp())), "price": "2", "size": "10"},
-            {"create_time": str(int(now.timestamp())), "price": "3", "size": "-5"},
+            {"create_time_ms": now.timestamp() + 0.125, "price": "2", "size": "10"},
+            {"create_time_ms": now.timestamp() + 0.250, "price": "3", "size": "-5"},
         ]
         trades_response.raise_for_status.return_value = None
         with patch.object(vw.requests, "get", side_effect=[contract_response, trades_response]):
@@ -38,6 +38,7 @@ class VolumeWatcherTests(unittest.TestCase):
         self.assertEqual(data["sell_usd"], Decimal("15"))
         self.assertEqual(data["buy_count"], 1)
         self.assertEqual(data["sell_count"], 1)
+        self.assertEqual(data["trades"], 2)
 
     def test_report_discloses_markets_and_five_minute_window(self):
         report = vw.build_report(vw.empty_market(), vw.empty_market(), datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc))
