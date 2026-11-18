@@ -300,10 +300,24 @@ def get_font(size, bold=False):
 
 
 def rtl_text(draw, xy, text, font, fill, anchor="ra"):
+    # Use Pillow's HarfBuzz/FriBidi path when available.
     try:
         draw.text(xy, text, font=font, fill=fill, anchor=anchor, direction="rtl", language="fa")
+        return
     except (TypeError, ValueError):
-        draw.text(xy, text, font=font, fill=fill, anchor=anchor)
+        pass
+
+    # Pillow wheels without libraqm cannot shape Arabic. Reshape and reorder
+    # explicitly instead of drawing isolated Arabic glyphs.
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+        visual_text = get_display(arabic_reshaper.reshape(text))
+        draw.text(xy, visual_text, font=font, fill=fill, anchor=anchor)
+    except ImportError as exc:
+        raise RuntimeError(
+            "Persian text rendering needs libraqm or arabic-reshaper/python-bidi"
+        ) from exc
 
 
 def create_graphic(changes):
