@@ -51,8 +51,9 @@ class VolumeWatcherTests(unittest.TestCase):
         spot = vw.empty_market()
         spot.update({"buy_usd": Decimal("120"), "sell_usd": Decimal("80"), "buy_count": 2, "sell_count": 1, "trades": 3})
         section = vw.market_section("Spot", spot)
-        self.assertIn("برتری خریداران", section)
+        self.assertIn("خریداران فعال‌تر", section)
         self.assertIn("$40.00", section)
+        self.assertIn("خریدها به‌اندازه", section)
 
     def test_load_message_id_uses_saved_state(self):
         with patch.object(vw, "STATE_FILE") as state_file:
