@@ -1,8 +1,10 @@
 name: LAB Whale Watcher
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  workflow_run:
+    workflows: ["LAB Premium Price Bot"]
+    types: [completed]
+    branches: [main]
   push:
     paths:
       - 'wallet_watcher.py'
@@ -23,6 +25,7 @@ concurrency:
 
 jobs:
   watch-top-holders:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
