@@ -129,10 +129,10 @@ def money(value):
 
 def market_section(title, data):
     if data is None:
-        return f"{title}\\n⚠️ اطلاعات این بازار نرسید؛ فعلاً عددی برای نمایش نداریم."
+        return f"{title}\n⚠️ اطلاعات این بازار نرسید؛ فعلاً عددی برای نمایش نداریم."
     total = data["buy_usd"] + data["sell_usd"]
     if data["trades"] == 0:
-        return f"{title}\\n▫️ تو این ۵ دقیقه معامله‌ای ثبت نشده."
+        return f"{title}\n▫️ تو این ۵ دقیقه معامله‌ای ثبت نشده."
     net = data["buy_usd"] - data["sell_usd"]
     if net > 0:
         result = f"👉 خریدارها {money(net)} بیشتر خرید کردن."
@@ -140,12 +140,12 @@ def market_section(title, data):
         result = f"👉 فروشنده‌ها {money(abs(net))} بیشتر فروختن."
     else:
         result = "👉 خرید و فروش تقریباً برابر بوده."
-    extra = "\\n⚠️ تعداد معاملات زیاد بوده؛ ممکنه همه‌شون تو گزارش نیومده باشن." if data.get("possibly_truncated") else ""
+    extra = "\n⚠️ تعداد معاملات زیاد بوده؛ ممکنه همه‌شون تو گزارش نیومده باشن." if data.get("possibly_truncated") else ""
     return (
-        f"{title}\\n"
-        f"🟢 خریدها: {money(data['buy_usd'])} | {data['buy_count']} معامله\\n"
-        f"🔴 فروش‌ها: {money(data['sell_usd'])} | {data['sell_count']} معامله\\n"
-        f"📊 جمع کل: {money(total)} | {data['trades']} معامله\\n"
+        f"{title}\n"
+        f"🟢 خریدها: {money(data['buy_usd'])} | {data['buy_count']} معامله\n"
+        f"🔴 فروش‌ها: {money(data['sell_usd'])} | {data['sell_count']} معامله\n"
+        f"📊 جمع کل: {money(total)} | {data['trades']} معامله\n"
         f"{result}{extra}"
     )
 
@@ -154,12 +154,12 @@ def build_report(spot, futures, now=None):
     now = now or datetime.now(timezone.utc)
     iran_now = now.astimezone(ZoneInfo("Asia/Tehran"))
     return (
-        "🐳 <b>گزارش خرید و فروش LAB</b>\\n"
-        "⏱ <b>فقط ۵ دقیقه اخیر</b>\\n\\n"
-        + market_section("🟦 <b>اسپات | خرید و فروش عادی</b>", spot)
-        + "\\n\\n"
-        + market_section("🟣 <b>فیوچرز | قرارداد اهرمی</b>", futures)
-        + f"\\n\\n🕒 ساعت ایران: {iran_now.strftime('%Y/%m/%d - %H:%M:%S')}\\n"
+        "🐳 <b>گزارش خرید و فروش LAB</b>\n"
+        "⏱ <b>فقط ۵ دقیقه اخیر</b>\n\n"
+        + market_section("🟦 <b>اسپات (Spot) | Gate.io</b>", spot)
+        + "\n\n"
+        + market_section("🟣 <b>فیوچرز (Futures) | Gate.io</b>", futures)
+        + f"\n\n🕒 ساعت ایران: {iran_now.strftime('%Y/%m/%d - %H:%M:%S')}\n"
         "ℹ️ خلاصه‌اش: این گزارش می‌گه تو همین ۵ دقیقه کفه خرید سنگین‌تر بوده یا فروش؛ پیش‌بینی قیمت نیست."
     )
 
