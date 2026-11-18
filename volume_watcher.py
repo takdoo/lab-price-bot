@@ -134,14 +134,22 @@ def market_section(title, data):
     if data["trades"] == 0:
         return f"{title}\\n▫️ در این بازه معامله‌ای ثبت نشد."
     net = data["buy_usd"] - data["sell_usd"]
-    pressure = "🟢 برتری خریداران" if net > 0 else ("🔴 برتری فروشندگان" if net < 0 else "⚪ تعادل نسبی")
-    extra = "\\n⚠️ احتمالاً بخشی از معاملات به‌دلیل سقف API دریافت نشده." if data.get("possibly_truncated") else ""
+    if net > 0:
+        balance = f"خریدها به‌اندازه {money(net)} بیشتر بوده‌اند"
+        pressure = "🟢 نتیجه: در این بازه خریداران فعال‌تر بوده‌اند"
+    elif net < 0:
+        balance = f"فروش‌ها به‌اندازه {money(abs(net))} بیشتر بوده‌اند"
+        pressure = "🔴 نتیجه: در این بازه فروشندگان فعال‌تر بوده‌اند"
+    else:
+        balance = "ارزش خرید و فروش برابر بوده است"
+        pressure = "⚪ نتیجه: تعادل خرید و فروش"
+    extra = "\\n⚠️ تعداد معاملات به سقف دریافت API رسیده؛ ممکن است همه معاملات دریافت نشده باشند." if data.get("possibly_truncated") else ""
     return (
         f"{title}\\n"
-        f"🟢 حجم خرید: {money(data['buy_usd'])} | {data['buy_count']} معامله\\n"
-        f"🔴 حجم فروش: {money(data['sell_usd'])} | {data['sell_count']} معامله\\n"
-        f"📊 حجم کل: {money(total)} | تعداد: {data['trades']}\\n"
-        f"⚖️ خالص خرید منهای فروش: {money(net)}\\n"
+        f"🟢 خرید: {money(data['buy_usd'])} در {data['buy_count']} معامله\\n"
+        f"🔴 فروش: {money(data['sell_usd'])} در {data['sell_count']} معامله\\n"
+        f"📊 مجموع خرید و فروش: {money(total)} در {data['trades']} معامله\\n"
+        f"⚖️ اختلاف خرید و فروش: {balance}\\n"
         f"{pressure}{extra}"
     )
 
@@ -152,11 +160,11 @@ def build_report(spot, futures, now=None):
     return (
         "🐳 <b>دیده‌بان حجم معاملات LAB</b>\\n"
         "⏱ بازه بررسی: ۵ دقیقه اخیر\\n\\n"
-        + market_section("🟦 <b>اسپات | Gate.io – LAB/USDT</b>", spot)
+        + market_section("🟦 <b>بازار نقدی (Spot) | Gate.io – LAB/USDT</b>", spot)
         + "\\n\\n"
-        + market_section("🟣 <b>فیوچرز | Gate.io Perpetual – LAB_USDT</b>", futures)
+        + market_section("🟣 <b>قرارداد دائمی (Futures) | Gate.io – LAB_USDT</b>", futures)
         + f"\\n\\n🕒 زمان ایران: {iran_now.strftime('%Y/%m/%d %H:%M:%S')}\\n"
-        "ℹ️ حجم خرید و فروش بر اساس جهت ثبت‌شده در معاملات عمومی بازار محاسبه شده؛ این گزارش توصیه مالی نیست."
+        "ℹ️ اعداد، ارزش دلاری معاملات ثبت‌شده در ۵ دقیقه اخیرند. نتیجه فقط وضعیت خرید و فروش همین بازه را نشان می‌دهد و پیش‌بینی قیمت یا توصیه مالی نیست."
     )
 
 
