@@ -7,6 +7,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'bot.py'
+      - 'tests/test_bot.py'
+      - 'tests/test_*.py'
+      - '.github/workflows/lab.yml'
+      - 'requirements.txt'
 
 permissions:
   contents: write
