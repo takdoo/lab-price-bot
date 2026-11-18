@@ -45,15 +45,19 @@ class VolumeWatcherTests(unittest.TestCase):
         self.assertIn("۵ دقیقه", report)
         self.assertIn("Gate.io", report)
         self.assertIn("Futures", report)
-        self.assertIn("توصیه مالی نیست", report)
+        self.assertIn("پیش‌بینی قیمت نیست", report)
+        self.assertIn("فقط ۵ دقیقه اخیر", report)
+        self.assertIn("خرید و فروش عادی", report)
+        self.assertIn("قرارداد اهرمی", report)
 
     def test_report_shows_net_aggressor_pressure(self):
         spot = vw.empty_market()
         spot.update({"buy_usd": Decimal("120"), "sell_usd": Decimal("80"), "buy_count": 2, "sell_count": 1, "trades": 3})
         section = vw.market_section("Spot", spot)
-        self.assertIn("خریداران فعال‌تر", section)
+        self.assertIn("خریدارها", section)
+        self.assertIn("بیشتر خرید کردن", section)
         self.assertIn("$40.00", section)
-        self.assertIn("خریدها به‌اندازه", section)
+        self.assertIn("جمع کل", section)
 
     def test_load_message_id_uses_saved_state(self):
         with patch.object(vw, "STATE_FILE") as state_file:
