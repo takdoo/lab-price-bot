@@ -24,7 +24,7 @@ class VolumeWatcherTests(unittest.TestCase):
     def test_gate_futures_trades_split_by_signed_size(self):
         now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
         contract_response = Mock()
-        contract_response.json.return_value = {"quanto_multiplier": "1"}
+        contract_response.json.return_value = {"name": "LAB_USDT", "status": "trading", "type": "direct", "quanto_multiplier": "1"}
         contract_response.raise_for_status.return_value = None
         trades_response = Mock()
         trades_response.json.return_value = [
