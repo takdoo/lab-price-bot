@@ -64,8 +64,10 @@ def fetch_spot_trades(now=None):
 def fetch_futures_trades(now=None):
     """Fetch public Gate.io LAB_USDT perpetual trades for the last five minutes."""
     now = now or datetime.now(timezone.utc)
-    start = int((now - timedelta(seconds=WINDOW_SECONDS)).timestamp())
-    end = int(now.timestamp())
+    start_exact = (now - timedelta(seconds=WINDOW_SECONDS)).timestamp()
+    end_exact = now.timestamp()
+    start = int(start_exact)
+    end = int(end_exact) + 1
 
     contract_response = requests.get(GATE_FUTURES_CONTRACT_URL, timeout=TIMEOUT)
     contract_response.raise_for_status()
@@ -96,7 +98,7 @@ def fetch_futures_trades(now=None):
         # Gate futures create_time_ms is Unix seconds with millisecond decimals
         # (e.g. 1795099200.123), not epoch milliseconds.
         ts = dec(trade.get("create_time_ms")) if trade.get("create_time_ms") is not None else dec(trade.get("create_time"))
-        if ts < start or ts > end:
+        if ts < start_exact or ts > end_exact:
             continue
         size = dec(trade.get("size"))
         quote = dec(trade.get("price")) * abs(size) * multiplier
