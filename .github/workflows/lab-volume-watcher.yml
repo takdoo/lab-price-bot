@@ -12,7 +12,7 @@ on:
       - ".github/workflows/lab-volume-watcher.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: lab-volume-watcher
@@ -25,19 +25,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Restore previous Telegram message state
-        uses: actions/cache@v4
-        with:
-          path: .volume-state
-          key: ${{ runner.os }}-lab-volume-state-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-lab-volume-state-
+      - name: Load persistent Telegram message state
+        run: |
+          git fetch origin refs/heads/lab-volume-state:refs/remotes/origin/lab-volume-state
+          mkdir -p .volume-state
+          git show origin/lab-volume-state:message_id.txt > .volume-state/message_id.txt
 
       - name: Validate configuration
         env:
@@ -58,4 +58,20 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: "@labcoinss"
           INITIAL_MESSAGE_ID: "3475"
+          VOLUME_STATE_FILE: ".volume-state/message_id.txt"
         run: python volume_watcher.py
+
+      - name: Save persistent Telegram message state
+        if: success()
+        run: |
+          git worktree add /tmp/lab-volume-state origin/lab-volume-state
+          cp .volume-state/message_id.txt /tmp/lab-volume-state/message_id.txt
+          git -C /tmp/lab-volume-state config user.name "github-actions[bot]"
+          git -C /tmp/lab-volume-state config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/lab-volume-state add message_id.txt
+          if ! git -C /tmp/lab-volume-state diff --cached --quiet; then
+            git -C /tmp/lab-volume-state commit -m "Update LAB volume report message ID"
+            git -C /tmp/lab-volume-state push origin HEAD:lab-volume-state
+          else
+            echo "Volume message state unchanged."
+          fi
