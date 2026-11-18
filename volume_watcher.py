@@ -111,6 +111,8 @@ def money(value):
 
 
 def market_section(title, data):
+    if data is None:
+        return f"{title}\\n⚠️ داده این بازار در این بازه از API دریافت نشد؛ عددی حدس زده نمی‌شود."
     total = data["buy_usd"] + data["sell_usd"]
     if data["trades"] == 0:
         return f"{title}\n▫️ در این بازه معامله‌ای ثبت نشد."
