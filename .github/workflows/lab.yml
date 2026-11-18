@@ -49,7 +49,7 @@ jobs:
       - name: Validate required secrets
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+          CHAT_ID: "@labcoinss"
         run: |
           test -n "$BOT_TOKEN" || { echo "::error::BOT_TOKEN is missing"; exit 1; }
           test -n "$CHAT_ID" || { echo "::error::CHAT_ID is empty"; exit 1; }
@@ -68,7 +68,7 @@ jobs:
       - name: Send new LAB price message
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID || '@lab_chats' }}
+          CHAT_ID: "@labcoinss"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JARVIS_ADMIN_ID: "5477408842"
           JARVIS_LISTEN_SECONDS: "0"
