@@ -1,4 +1,5 @@
 name: LAB Premium Price Bot
+# The price workflow is the five-minute coordinator for all LAB reports.
 
 on:
   schedule:
