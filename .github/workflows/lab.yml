@@ -1,6 +1,8 @@
 name: LAB Premium Price Bot
 
 on:
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
   repository_dispatch:
     types: [lab-price-update]
