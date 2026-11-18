@@ -129,28 +129,24 @@ def money(value):
 
 def market_section(title, data):
     if data is None:
-        return f"{title}\\n⚠️ داده این بازار در این بازه از API دریافت نشد؛ عددی حدس زده نمی‌شود."
+        return f"{title}\\n⚠️ اطلاعات این بازار نرسید؛ فعلاً عددی برای نمایش نداریم."
     total = data["buy_usd"] + data["sell_usd"]
     if data["trades"] == 0:
-        return f"{title}\\n▫️ در این بازه معامله‌ای ثبت نشد."
+        return f"{title}\\n▫️ تو این ۵ دقیقه معامله‌ای ثبت نشده."
     net = data["buy_usd"] - data["sell_usd"]
     if net > 0:
-        balance = f"خریدها به‌اندازه {money(net)} بیشتر بوده‌اند"
-        pressure = "🟢 نتیجه: در این بازه خریداران فعال‌تر بوده‌اند"
+        result = f"👉 خریدارها {money(net)} بیشتر خرید کردن."
     elif net < 0:
-        balance = f"فروش‌ها به‌اندازه {money(abs(net))} بیشتر بوده‌اند"
-        pressure = "🔴 نتیجه: در این بازه فروشندگان فعال‌تر بوده‌اند"
+        result = f"👉 فروشنده‌ها {money(abs(net))} بیشتر فروختن."
     else:
-        balance = "ارزش خرید و فروش برابر بوده است"
-        pressure = "⚪ نتیجه: تعادل خرید و فروش"
-    extra = "\\n⚠️ تعداد معاملات به سقف دریافت API رسیده؛ ممکن است همه معاملات دریافت نشده باشند." if data.get("possibly_truncated") else ""
+        result = "👉 خرید و فروش تقریباً برابر بوده."
+    extra = "\\n⚠️ تعداد معاملات زیاد بوده؛ ممکنه همه‌شون تو گزارش نیومده باشن." if data.get("possibly_truncated") else ""
     return (
         f"{title}\\n"
-        f"🟢 خرید: {money(data['buy_usd'])} در {data['buy_count']} معامله\\n"
-        f"🔴 فروش: {money(data['sell_usd'])} در {data['sell_count']} معامله\\n"
-        f"📊 مجموع خرید و فروش: {money(total)} در {data['trades']} معامله\\n"
-        f"⚖️ اختلاف خرید و فروش: {balance}\\n"
-        f"{pressure}{extra}"
+        f"🟢 خریدها: {money(data['buy_usd'])} | {data['buy_count']} معامله\\n"
+        f"🔴 فروش‌ها: {money(data['sell_usd'])} | {data['sell_count']} معامله\\n"
+        f"📊 جمع کل: {money(total)} | {data['trades']} معامله\\n"
+        f"{result}{extra}"
     )
 
 
@@ -158,13 +154,13 @@ def build_report(spot, futures, now=None):
     now = now or datetime.now(timezone.utc)
     iran_now = now.astimezone(ZoneInfo("Asia/Tehran"))
     return (
-        "🐳 <b>دیده‌بان حجم معاملات LAB</b>\\n"
-        "⏱ بازه بررسی: ۵ دقیقه اخیر\\n\\n"
-        + market_section("🟦 <b>بازار نقدی (Spot) | Gate.io – LAB/USDT</b>", spot)
+        "🐳 <b>گزارش خرید و فروش LAB</b>\\n"
+        "⏱ <b>فقط ۵ دقیقه اخیر</b>\\n\\n"
+        + market_section("🟦 <b>اسپات | خرید و فروش عادی</b>", spot)
         + "\\n\\n"
-        + market_section("🟣 <b>قرارداد دائمی (Futures) | Gate.io – LAB_USDT</b>", futures)
-        + f"\\n\\n🕒 زمان ایران: {iran_now.strftime('%Y/%m/%d %H:%M:%S')}\\n"
-        "ℹ️ اعداد، ارزش دلاری معاملات ثبت‌شده در ۵ دقیقه اخیرند. نتیجه فقط وضعیت خرید و فروش همین بازه را نشان می‌دهد و پیش‌بینی قیمت یا توصیه مالی نیست."
+        + market_section("🟣 <b>فیوچرز | قرارداد اهرمی</b>", futures)
+        + f"\\n\\n🕒 ساعت ایران: {iran_now.strftime('%Y/%m/%d - %H:%M:%S')}\\n"
+        "ℹ️ خلاصه‌اش: این گزارش می‌گه تو همین ۵ دقیقه کفه خرید سنگین‌تر بوده یا فروش؛ پیش‌بینی قیمت نیست."
     )
 
 
