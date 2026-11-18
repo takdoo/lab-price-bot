@@ -170,10 +170,15 @@ def telegram_call(method, payload):
         json=payload,
         timeout=TIMEOUT,
     )
-    response.raise_for_status()
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        response.raise_for_status()
+        raise RuntimeError(f"Telegram {method} returned a non-JSON response")
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram {method} failed: {data.get('description', 'unknown error')}")
+        description = data.get("description", "unknown error")
+        raise RuntimeError(f"Telegram {method} failed (HTTP {response.status_code}): {description}")
+    response.raise_for_status()
     return data.get("result") or {}
 
 
