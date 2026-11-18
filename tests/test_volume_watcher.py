@@ -48,7 +48,7 @@ class VolumeWatcherTests(unittest.TestCase):
         self.assertIn("پیش‌بینی قیمت نیست", report)
         self.assertIn("فقط ۵ دقیقه اخیر", report)
         self.assertIn("اسپات (Spot)", report)
-        self.assertIn("قرارداد اهرمی", report)
+        self.assertIn("فیوچرز (Futures)", report)
 
     def test_report_shows_net_aggressor_pressure(self):
         spot = vw.empty_market()
