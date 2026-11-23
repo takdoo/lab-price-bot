@@ -115,28 +115,30 @@ def fa(value):
 
 
 def font(size, bold=False, latin=False):
-    paths = [
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") if latin else
-        ("/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf" if bold else "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf"),
-        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
+    weight = "Bold" if bold else "Regular"
+    if latin:
+        paths = [f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf", f"/usr/share/fonts/truetype/liberation2/LiberationSans-{weight}.ttf"]
+    else:
+        paths = [
+            f"/usr/share/fonts/truetype/vazirmatn/Vazirmatn-{weight}.ttf",
+            f"/usr/share/fonts/truetype/noto/NotoSansArabic-{weight}.ttf",
+            f"/usr/share/fonts/truetype/noto/NotoNaskhArabic-{weight}.ttf",
+            f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf",
+        ]
     for p in paths:
         if Path(p).exists():
             try:
-                return ImageFont.truetype(p, size, layout_engine=ImageFont.Layout.RAQM)
+                candidate = ImageFont.truetype(p, size, layout_engine=ImageFont.Layout.RAQM)
+                probe = "کیف پول موجودی تغییر منبع داده"
+                if latin or all(candidate.getmask(ch).getbbox() is not None for ch in probe if ch.strip()):
+                    return candidate
             except Exception:
-                return ImageFont.truetype(p, size)
-    return ImageFont.load_default()
+                continue
+    raise RuntimeError("No installed font with complete Persian glyph coverage")
 
 
 def rtl(draw, xy, text, fnt, fill, anchor="ra"):
-    try:
-        draw.text(xy, str(text), font=fnt, fill=fill, anchor=anchor, direction="rtl", language="fa")
-    except (TypeError, ValueError):
-        import arabic_reshaper
-        from bidi.algorithm import get_display
-        draw.text(xy, get_display(arabic_reshaper.reshape(str(text))), font=fnt, fill=fill, anchor=anchor)
+    draw.text(xy, str(text), font=fnt, fill=fill, anchor=anchor, direction="rtl", language="fa")
 
 
 def make_image(rows):
