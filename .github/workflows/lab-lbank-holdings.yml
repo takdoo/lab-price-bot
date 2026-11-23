@@ -42,7 +42,7 @@ jobs:
       - name: Install Persian typography fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y fonts-noto-core fonts-noto-extra
+          sudo apt-get install -y fonts-noto-core fonts-noto-extra fonts-dejavu-core fonts-liberation2
           fc-cache -f
 
       - name: Install isolated dependencies
