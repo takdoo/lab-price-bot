@@ -83,7 +83,7 @@ def parse_rows(html):
             continue
     if rows:
         return rows[:10]
-    raise RuntimeError("LBank holdings section found, but row format was not recognized: " + section[:900])
+    raise RuntimeError(f"LBank parser diagnostic matches={len(matches)} sample={section[:300]!r} values={(number_pattern.findall(section[:180]))!r}")
 
 
 def fetch_rows():
