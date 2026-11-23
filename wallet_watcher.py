@@ -101,7 +101,28 @@ def fetch_onchain_balances(addresses):
                             display_mode = "toUIAmount"
                         except Exception:
                             stage = "uiMultiplier probe"
-                            multiplier_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": multiplier_selector}, block_tag]), 16)
+                            try:
+                                multiplier_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": multiplier_selector}, block_tag]), 16)
+                            except Exception:
+                                # Some verified deployments emit the EIP-8056 event but do not expose the getter.
+                                # Recover the active multiplier from the contract's own event history.
+                                topic0 = "0x" + keccak(b"UIMultiplierUpdated(uint256,uint256,uint256)").hex()
+                                logs = _rpc_call(rpc_url, "eth_getLogs", [{"address": CONTRACT, "fromBlock": "0x0", "toBlock": block_tag, "topics": [topic0]}])
+                                block_time_hex = _rpc_call(rpc_url, "eth_getBlockByNumber", [block_tag, False])["timestamp"]
+                                block_time = int(block_time_hex, 16)
+                                active = []
+                                for entry in logs:
+                                    raw_data = str(entry.get("data", "0x"))[2:]
+                                    if len(raw_data) < 192:
+                                        continue
+                                    old_value = int(raw_data[0:64], 16)
+                                    new_value = int(raw_data[64:128], 16)
+                                    effective_at = int(raw_data[128:192], 16)
+                                    if new_value > 0 and effective_at <= block_time:
+                                        active.append((effective_at, int(entry.get("blockNumber", "0x0"), 16), new_value))
+                                if not active:
+                                    raise RuntimeError("No active UIMultiplierUpdated event found on-chain")
+                                multiplier_raw = sorted(active)[-1][2]
                             if multiplier_raw <= 0:
                                 raise RuntimeError("Invalid on-chain UI multiplier")
                             multiplier = Decimal(multiplier_raw) / Decimal(10**18)
