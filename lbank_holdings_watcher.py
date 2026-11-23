@@ -64,7 +64,7 @@ def parse_rows(html):
         rows.append({"address":m.group(1),"balance":dec(m.group(2)),"day":dec(m.group(4)),"week":dec(m.group(5))})
     if rows:
         return rows[:10]
-    raise RuntimeError("Could not locate LBank LAB holdings table; page markup may have changed or data is client-rendered")
+    raise RuntimeError("LBank HTML diagnostic: " + soup.get_text(" ", strip=True)[:1800])
 
 
 def fetch_rows():
