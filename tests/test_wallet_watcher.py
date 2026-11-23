@@ -127,8 +127,7 @@ class CompareTopHoldersTests(unittest.TestCase):
                 return {"status": {"error_code": "0"}, "data": {"holders": rows}}
 
         mocked_post.return_value = FakeResponse()
-        with patch("wallet_watcher.fetch_onchain_balances", side_effect=lambda addresses: ({row["walletAddress"].lower(): row["actualBalance"] for row in rows}, {"block_number": 123, "ui_multiplier": "1"})):
-            holders = fetch_holders()
+        holders = fetch_holders()
 
         self.assertEqual(len(holders), TOP_HOLDERS_COUNT)
         self.assertEqual(holders[0]["balance"], "1000")
@@ -155,8 +154,7 @@ class CompareTopHoldersTests(unittest.TestCase):
             FakeResponse(False, 400, '{"status":{"error_message":"Parameter error"}}'),
             FakeResponse(True, 200, "", {"status": {"error_code": 0}, "data": {"holders": rows}}),
         ]
-        with patch("wallet_watcher.fetch_onchain_balances", side_effect=lambda addresses: ({row["walletAddress"].lower(): row["balance"] for row in rows}, {"block_number": 123, "ui_multiplier": "1"})):
-            holders = fetch_holders()
+        holders = fetch_holders()
 
         self.assertEqual(len(holders), TOP_HOLDERS_COUNT)
         self.assertEqual(mocked_post.call_count, 2)
