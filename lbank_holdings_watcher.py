@@ -115,26 +115,25 @@ def fa(value):
 
 
 def font(size, bold=False, latin=False):
-    weight = "Bold" if bold else "Regular"
     if latin:
-        paths = [f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf", f"/usr/share/fonts/truetype/liberation2/LiberationSans-{weight}.ttf"]
+        paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        ]
     else:
         paths = [
-            f"/usr/share/fonts/truetype/vazirmatn/Vazirmatn-{weight}.ttf",
-            f"/usr/share/fonts/truetype/noto/NotoSansArabic-{weight}.ttf",
-            f"/usr/share/fonts/truetype/noto/NotoNaskhArabic-{weight}.ttf",
-            f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf",
+            "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf" if bold else "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         ]
     for p in paths:
         if Path(p).exists():
             try:
-                candidate = ImageFont.truetype(p, size, layout_engine=ImageFont.Layout.RAQM)
-                probe = "کیف پول موجودی تغییر منبع داده"
-                if latin or all(candidate.getmask(ch).getbbox() is not None for ch in probe if ch.strip()):
-                    return candidate
+                return ImageFont.truetype(p, size, layout_engine=ImageFont.Layout.RAQM)
             except Exception:
                 continue
-    raise RuntimeError("No installed font with complete Persian glyph coverage")
+    raise RuntimeError("No usable installed font for report rendering")
 
 
 def rtl(draw, xy, text, fnt, fill, anchor="ra"):
