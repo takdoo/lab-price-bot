@@ -12,7 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
-URL = "https://www.lbank.com/price/lab/funds-holdings"
+URL = "https://www.lbank.com/price/lab/funds-holdings"  # Official LBank holdings source
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("CHAT_ID", "@labcoinss").strip()
 STATE_FILE = Path(os.getenv("LBANK_STATE_FILE", ".lbank-state/message_id.txt"))
