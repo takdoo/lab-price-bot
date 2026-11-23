@@ -114,10 +114,12 @@ def fa(value):
     return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 
-def font(size, bold=False):
+def font(size, bold=False, latin=False):
     paths = [
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") if latin else
+        ("/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Bold.ttf" if bold else "/usr/share/fonts/truetype/vazirmatn/Vazirmatn-Regular.ttf"),
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
     ]
     for p in paths:
         if Path(p).exists():
@@ -130,49 +132,67 @@ def font(size, bold=False):
 
 def rtl(draw, xy, text, fnt, fill, anchor="ra"):
     try:
-        draw.text(xy, text, font=fnt, fill=fill, anchor=anchor, direction="rtl", language="fa")
+        draw.text(xy, str(text), font=fnt, fill=fill, anchor=anchor, direction="rtl", language="fa")
     except (TypeError, ValueError):
         import arabic_reshaper
         from bidi.algorithm import get_display
-        draw.text(xy, get_display(arabic_reshaper.reshape(text)), font=fnt, fill=fill, anchor=anchor)
+        draw.text(xy, get_display(arabic_reshaper.reshape(str(text))), font=fnt, fill=fill, anchor=anchor)
 
 
 def make_image(rows):
-    width, height = 1500, 1180
-    im = Image.new("RGB", (width, height), "#070B13")
+    # Instagram Story canvas: 1080 x 1920, designed for phone screens.
+    width, height = 1080, 1920
+    im = Image.new("RGB", (width, height), "#07111F")
     d = ImageDraw.Draw(im)
-    d.rounded_rectangle((24,24,width-24,height-24), radius=34, fill="#101B2B", outline="#29415D", width=3)
-    d.rounded_rectangle((55,55,width-55,205), radius=28, fill="#172B43")
-    rtl(d,(width-95,112),"دیده‌بان موجودی نهنگ‌های LAB",font(48,True),"#F4F7FC")
-    rtl(d,(width-95,170),"منبع: LBank Token Holdings | شبکه BNB Smart Chain",font(23),"#AFC2D9")
-    now=datetime.now(ZoneInfo("Asia/Tehran"))
-    jalali=jdatetime.datetime.fromgregorian(datetime=now)
-    d.text((90,155),fa(jalali.strftime("%Y/%m/%d"))+"  "+fa(now.strftime("%H:%M")),font=font(22),fill="#AFC2D9")
-    # Table headers
-    y0=250
-    headers=[("رتبه",1390),("آدرس کیف پول",1110),("موجودی",760),("تغییر ۲۴ساعته",470),("تغییر ۷روزه",185)]
-    for label,x in headers:
-        rtl(d,(x,y0),label,font(24,True),"#D9E6F5")
-    d.line((70,285,width-70,285),fill="#40546D",width=2)
-    total_day=sum((r["day"] for r in rows),Decimal(0))
-    total_week=sum((r["week"] for r in rows),Decimal(0))
-    for i,row in enumerate(rows,1):
-        y=305+(i-1)*72
-        if i%2==0:
-            d.rounded_rectangle((65,y-10,width-65,y+54),radius=12,fill="#142438")
-        d.text((1390,y+22),fa(i),font=font(24,True),fill="#F3F6FB",anchor="mm")
-        d.text((1110,y+22),short(row["address"]),font=font(20),fill="#9FB5CE",anchor="rm")
-        d.text((760,y+22),amount(row["balance"]),font=font(25,True),fill="#F4F7FC",anchor="rm")
-        for key,x in (("day",470),("week",185)):
-            val=row[key]
-            color="#2BD68B" if val>0 else "#FF6577" if val<0 else "#C6D2E1"
-            d.text((x,y+22),amount(val),font=font(23,True),fill=color,anchor="rm")
-        d.line((75,y+58,width-75,y+58),fill="#26384E",width=1)
-    base=1050
-    rtl(d,(width-95,base),"خالص تغییر ۱۰ کیف پول",font(26,True),"#C8D7E8")
-    d.text((95,base),f"24h  {amount(total_day)} LAB     |     7d  {amount(total_week)} LAB",font=font(26,True),fill="#2BD68B" if total_day>=0 else "#FF6577",anchor="lm")
-    d.text((width-95,1110),"تغییر موجودی به‌تنهایی به معنی خرید یا فروش قطعی نیست",font=font(18),fill="#91A7C0",anchor="ra")
-    im.save(OUT,quality=92)
+    d.rounded_rectangle((22, 22, width-22, height-22), radius=42, fill="#0D1B2D", outline="#294968", width=3)
+    d.rounded_rectangle((48, 48, width-48, 292), radius=34, fill="#142B45", outline="#315779", width=2)
+    d.ellipse((830, 72, 1010, 252), fill="#1B3C5C")
+    d.text((920, 142), "LAB", font=font(76, True, latin=True), fill="#F6C65B", anchor="mm")
+    rtl(d, (785, 142), "دیده‌بان نهنگ‌ها", font(48, True), "#FFFFFF")
+    rtl(d, (960, 218), "۱۰ کیف پول بزرگ شبکه BNB", font(27), "#B8CBE0")
+    now = datetime.now(ZoneInfo("Asia/Tehran"))
+    jalali = jdatetime.datetime.fromgregorian(datetime=now)
+    stamp = fa(jalali.strftime("%Y/%m/%d")) + "  |  " + fa(now.strftime("%H:%M"))
+    d.text((92, 220), stamp, font=font(24, True, latin=True), fill="#C5D5E7", anchor="lm")
+
+    total_day = sum((r["day"] for r in rows), Decimal(0))
+    total_week = sum((r["week"] for r in rows), Decimal(0))
+    d.rounded_rectangle((52, 322, 528, 510), radius=28, fill="#13283E", outline="#2B4B68", width=2)
+    d.rounded_rectangle((552, 322, 1028, 510), radius=28, fill="#13283E", outline="#2B4B68", width=2)
+    rtl(d, (490, 365), "خالص تغییر ۲۴ ساعته", font(27, True), "#D5E3F1")
+    rtl(d, (990, 365), "خالص تغییر ۷ روزه", font(27, True), "#D5E3F1")
+    color_day = "#36D995" if total_day >= 0 else "#FF687A"
+    color_week = "#36D995" if total_week >= 0 else "#FF687A"
+    d.text((290, 445), amount(total_day), font=font(51, True, latin=True), fill=color_day, anchor="mm")
+    d.text((790, 445), amount(total_week), font=font(51, True, latin=True), fill=color_week, anchor="mm")
+    d.text((490, 482), "LAB", font=font(19, True, latin=True), fill="#9FB6CD", anchor="ra")
+    d.text((990, 482), "LAB", font=font(19, True, latin=True), fill="#9FB6CD", anchor="ra")
+
+    rtl(d, (1000, 555), "رتبه‌بندی ۱۰ دارنده بزرگ", font(31, True), "#F1F6FC")
+    d.line((72, 580, 1008, 580), fill="#36516C", width=2)
+    card_top, card_h, gap = 598, 113, 10
+    for i, row in enumerate(rows, 1):
+        y = card_top + (i-1)*(card_h+gap)
+        d.rounded_rectangle((54, y, 1026, y+card_h), radius=22,
+                            fill="#14283D" if i % 2 else "#102237", outline="#29435D", width=2)
+        d.rounded_rectangle((76, y+17, 142, y+80), radius=18, fill="#254766")
+        d.text((109, y+49), fa(i), font=font(29, True), fill="#F6C65B", anchor="mm")
+        d.text((170, y+33), short(row["address"]), font=font(19, False, latin=True), fill="#AFC4DA", anchor="lm")
+        rtl(d, (990, y+36), "موجودی", font(19, True), "#AFC4DA")
+        d.text((990, y+76), amount(row["balance"]), font=font(35, True, latin=True), fill="#FFFFFF", anchor="rm")
+        day_color = "#35D58D" if row["day"] > 0 else "#FF6577" if row["day"] < 0 else "#C5D2E0"
+        week_color = "#35D58D" if row["week"] > 0 else "#FF6577" if row["week"] < 0 else "#C5D2E0"
+        d.text((170, y+83), "24h", font=font(17, True, latin=True), fill="#91A9C2", anchor="lm")
+        d.text((222, y+83), amount(row["day"]), font=font(22, True, latin=True), fill=day_color, anchor="lm")
+        d.text((405, y+83), "7d", font=font(17, True, latin=True), fill="#91A9C2", anchor="lm")
+        d.text((452, y+83), amount(row["week"]), font=font(22, True, latin=True), fill=week_color, anchor="lm")
+
+    footer_y = card_top + 10*(card_h+gap) + 4
+    d.rounded_rectangle((54, footer_y, 1026, footer_y+112), radius=24, fill="#172E46", outline="#345675", width=2)
+    rtl(d, (990, footer_y+38), "منبع داده: LBank Token Holdings", font(23, True), "#E4EDF7")
+    rtl(d, (990, footer_y+78), "به‌روزرسانی خودکار هر ۵ دقیقه", font(21), "#AFC4DA")
+    rtl(d, (540, 1840), "تغییر موجودی لزوماً به معنی خرید یا فروش قطعی نیست", font(20), "#829AB4", anchor="mm")
+    im.save(OUT, quality=94, optimize=True)
 
 
 def read_id():
