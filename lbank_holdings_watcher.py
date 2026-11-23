@@ -170,7 +170,7 @@ def make_image(rows):
 
     rtl(d, (1000, 555), "رتبه‌بندی ۱۰ دارنده بزرگ", font(31, True), "#F1F6FC")
     d.line((72, 580, 1008, 580), fill="#36516C", width=2)
-    card_top, card_h, gap = 598, 113, 10
+    card_top, card_h, gap = 600, 104, 7
     for i, row in enumerate(rows, 1):
         y = card_top + (i-1)*(card_h+gap)
         d.rounded_rectangle((54, y, 1026, y+card_h), radius=22,
