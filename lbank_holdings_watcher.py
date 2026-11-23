@@ -63,16 +63,22 @@ def parse_rows(html):
     if marker not in text:
         raise RuntimeError("LBank holdings section is missing from the returned page")
     section = text.split(marker, 1)[1]
-    pattern = re.compile(
-        r"(?:[0-9]+[ ]+)?(0x[a-f0-9]{4}[.]{3}[a-f0-9]{4,})[ ]+"
-        r"([0-9,.]+[ ]*[KMB]?)[ ]+([0-9.]+%)[ ]+"
-        r"([-+−]?[0-9,.]+[ ]*[KMB]?)[ ]+([-+−]?[0-9,.]+[ ]*[KMB]?)",
-        re.I,
-    )
-    for match in pattern.finditer(section):
+    address_pattern = re.compile(r"0x[a-f0-9]{4}[.]{3}[a-f0-9]{4,}", re.I)
+    matches = list(address_pattern.finditer(section))
+    number_pattern = re.compile(r"[-+]?[0-9][0-9,.]*[KMB]?", re.I)
+    for index, address_match in enumerate(matches):
+        chunk_end = matches[index + 1].start() if index + 1 < len(matches) else len(section)
+        chunk = section[address_match.end():chunk_end]
+        values = number_pattern.findall(chunk)
+        if len(values) < 4:
+            continue
         try:
-            rows.append({"address": match.group(1), "balance": dec(match.group(2)),
-                         "day": dec(match.group(4)), "week": dec(match.group(5))})
+            rows.append({
+                "address": address_match.group(0),
+                "balance": dec(values[0]),
+                "day": dec(values[2]),
+                "week": dec(values[3]),
+            })
         except (ValueError, InvalidOperation):
             continue
     if rows:
