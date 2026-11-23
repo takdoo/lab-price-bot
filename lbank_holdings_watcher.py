@@ -22,13 +22,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 
 def dec(value):
-    text = str(value or "").replace(",", "").replace("−", "-").strip()
-    match = re.search(r"[-+]?\\d+(?:\\.\\d+)?\\s*[KMB]?", text, re.I)
-    if not match:
-        raise ValueError(f"Invalid LBank numeric value: {value!r}")
-    token = match.group(0).replace(" ", "")
-    suffix = token[-1].upper() if token[-1].isalpha() else ""
-    number = Decimal(token[:-1] if suffix else token)
+    token = str(value or "").replace(",", "").replace("−", "-").strip().upper()
+    suffix = token[-1] if token and token[-1] in "KMB" else ""
+    number_text = token[:-1] if suffix else token
+    number = Decimal(number_text)
     return number * {"K": Decimal(1000), "M": Decimal(1000000), "B": Decimal(1000000000), "": Decimal(1)}[suffix]
 
 
@@ -83,7 +80,7 @@ def parse_rows(html):
             continue
     if rows:
         return rows[:10]
-    raise RuntimeError(f"LBank parser diagnostic matches={len(matches)} sample={section[:300]!r} values={(number_pattern.findall(section[:180]))!r}")
+    raise RuntimeError(f"LBank rows could not be parsed: matches={len(matches)}")
 
 
 def fetch_rows():
