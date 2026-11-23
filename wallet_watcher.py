@@ -70,29 +70,31 @@ def fetch_onchain_balances(addresses):
     """Read raw balances and EIP-8056 UI multiplier from one BSC block."""
     errors = []
     for rpc_url in BSC_RPC_URLS:
+        stage = "blockNumber"
         try:
             block_hex = _rpc_call(rpc_url, "eth_blockNumber", [])
             block_number = int(block_hex, 16)
             block_tag = hex(block_number)
+            stage = "decimals"
+            decimals = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": "0x313ce567"}, block_tag]), 16)
+            stage = "uiMultiplier"
             multiplier_selector = "0x" + keccak(b"uiMultiplier()")[:4].hex()
-            decimals_selector = "0x313ce567"
             multiplier_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": multiplier_selector}, block_tag]), 16)
-            decimals = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": decimals_selector}, block_tag]), 16)
             if multiplier_raw <= 0 or decimals < 0 or decimals > 36:
-                raise RuntimeError(f"Invalid on-chain multiplier/decimals: {multiplier_raw}/{decimals}")
+                raise RuntimeError("Invalid on-chain multiplier/decimals")
             multiplier = Decimal(multiplier_raw) / Decimal(10**18)
             result = {}
             for address in addresses:
+                stage = "balanceOf:" + address
                 selector = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
                 raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": selector}, block_tag]), 16)
                 raw_amount = Decimal(raw) / Decimal(10**decimals)
-                ui_amount = raw_amount * multiplier
-                result[address.lower()] = str(ui_amount)
+                result[address.lower()] = str(raw_amount * multiplier)
             logging.info("BSC direct balances verified at block %s; UI multiplier=%s; decimals=%s; RPC=%s", block_number, multiplier, decimals, rpc_url)
             return result, {"source": "BSC RPC balanceOf × uiMultiplier", "block_number": block_number, "ui_multiplier": str(multiplier), "decimals": decimals}
         except Exception as exc:
-            errors.append(f"{rpc_url}: {exc}")
-            logging.warning("BSC RPC failed: %s", exc)
+            errors.append(f"{rpc_url} [{stage}]: {exc}")
+            logging.warning("BSC RPC failed at %s: %s", stage, exc)
     raise RuntimeError("Could not verify LAB balances directly on BSC; refusing stale CMC balances. " + " | ".join(errors))
 
 
