@@ -57,14 +57,27 @@ def parse_rows(html):
             rows.append({"address": address, "balance": balance, "day": day, "week": week})
         if rows:
             return rows[:10]
-    # Fallback for LBank's server-rendered text when table markup is not retained.
+    # LBank renders the holdings grid as divs rather than a semantic HTML table.
     text = soup.get_text(" ", strip=True)
-    pattern = re.compile(r"(0x[a-fA-F0-9]{4}…[a-fA-F0-9]{4,}|0x[a-fA-F0-9]{4}\\.\\.\\.[a-fA-F0-9]{4,})\\s+([\\d,.]+\\s*[KMB]?)\\s+([\\d.]+%)\\s+([-+−]?[\\d,.]+\\s*[KMB]?)\\s+([-+−]?[\\d,.]+\\s*[KMB]?)", re.I)
-    for m in pattern.finditer(text):
-        rows.append({"address":m.group(1),"balance":dec(m.group(2)),"day":dec(m.group(4)),"week":dec(m.group(5))})
+    marker = "Token holdings of top 50 addresses"
+    if marker not in text:
+        raise RuntimeError("LBank holdings section is missing from the returned page")
+    section = text.split(marker, 1)[1]
+    pattern = re.compile(
+        r"(?:\\d+\\s+)?(0x[a-f0-9]{4}\\.\\.\\.[a-f0-9]{4,})\\s+"
+        r"([\\d,.]+\\s*[KMB]?)\\s+([\\d.]+%)\\s+"
+        r"([-+−]?[\\d,.]+\\s*[KMB]?)\\s+([-+−]?[\\d,.]+\\s*[KMB]?)",
+        re.I,
+    )
+    for match in pattern.finditer(section):
+        try:
+            rows.append({"address": match.group(1), "balance": dec(match.group(2)),
+                         "day": dec(match.group(4)), "week": dec(match.group(5))})
+        except (ValueError, InvalidOperation):
+            continue
     if rows:
         return rows[:10]
-    raise RuntimeError("LBank HTML diagnostic: " + soup.get_text(" ", strip=True)[:1800])
+    raise RuntimeError("LBank holdings section found, but row format was not recognized: " + section[:900])
 
 
 def fetch_rows():
