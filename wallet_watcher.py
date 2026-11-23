@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 
 import jdatetime
 import requests
-from eth_hash.auto import keccak
 from PIL import Image, ImageDraw, ImageFont
 
 CONTRACT = "0x7ec43cf65f1663f820427c62a5780b8f2e25593a"
@@ -27,9 +26,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHAT_ID = os.getenv("CHAT_ID", "@lab_chats").strip()
 ALERT_THRESHOLD = Decimal(os.getenv("WHALE_ALERT_LAB", "1000000"))
 TOP_HOLDERS_COUNT = 10
-LAST_CHAIN_META = {}
 TIMEOUT = (10, 30)
-BSC_RPC_URLS = [u.strip() for u in os.getenv("BSC_RPC_URLS", "https://bsc-dataseed.binance.org,https://bsc-dataseed1.defibit.io,https://bsc-dataseed1.ninicoin.io").split(",") if u.strip()]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -53,94 +50,6 @@ def iran_time():
     now = datetime.now(ZoneInfo("Asia/Tehran"))
     jalali = jdatetime.datetime.fromgregorian(datetime=now)
     return jalali.strftime("%Y/%m/%d"), now.strftime("%H:%M")
-
-
-def _rpc_call(url, method, params):
-    response = requests.post(url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=TIMEOUT)
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("error"):
-        raise RuntimeError(str(payload["error"]))
-    if "result" not in payload:
-        raise RuntimeError("BSC RPC response has no result")
-    return payload["result"]
-
-
-def fetch_onchain_balances(addresses):
-    """Read raw balances and EIP-8056 UI multiplier from one BSC block."""
-    errors = []
-    for rpc_url in BSC_RPC_URLS:
-        stage = "blockNumber"
-        try:
-            block_hex = _rpc_call(rpc_url, "eth_blockNumber", [])
-            block_number = int(block_hex, 16)
-            block_tag = hex(block_number)
-            stage = "decimals"
-            decimals = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": "0x313ce567"}, block_tag]), 16)
-            multiplier_selector = "0x" + keccak(b"uiMultiplier()")[:4].hex()
-            to_ui_selector = "0x" + keccak(b"toUIAmount(uint256)")[:4].hex()
-            balance_ui_selector = "0x" + keccak(b"balanceOfUI(address)")[:4].hex()
-            result = {}
-            display_mode = None
-            multiplier = None
-            for address in addresses:
-                stage = "balanceOf:" + address
-                selector = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
-                raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": selector}, block_tag]), 16)
-                raw_amount = Decimal(raw) / Decimal(10**decimals)
-                if display_mode is None:
-                    stage = "balanceOfUI probe"
-                    try:
-                        balance_data = balance_ui_selector + address.lower().replace("0x", "").rjust(64, "0")
-                        _rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": balance_data}, block_tag])
-                        display_mode = "balanceOfUI"
-                    except Exception:
-                        stage = "toUIAmount probe"
-                        try:
-                            _rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": to_ui_selector + format(raw, "064x")}, block_tag])
-                            display_mode = "toUIAmount"
-                        except Exception:
-                            stage = "uiMultiplier probe"
-                            try:
-                                multiplier_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": multiplier_selector}, block_tag]), 16)
-                            except Exception:
-                                # Some verified deployments emit the EIP-8056 event but do not expose the getter.
-                                # Recover the active multiplier from the contract's own event history.
-                                topic0 = "0x" + keccak(b"UIMultiplierUpdated(uint256,uint256,uint256)").hex()
-                                logs = _rpc_call(rpc_url, "eth_getLogs", [{"address": CONTRACT, "fromBlock": "0x0", "toBlock": block_tag, "topics": [topic0]}])
-                                block_time_hex = _rpc_call(rpc_url, "eth_getBlockByNumber", [block_tag, False])["timestamp"]
-                                block_time = int(block_time_hex, 16)
-                                active = []
-                                for entry in logs:
-                                    raw_data = str(entry.get("data", "0x"))[2:]
-                                    if len(raw_data) < 192:
-                                        continue
-                                    old_value = int(raw_data[0:64], 16)
-                                    new_value = int(raw_data[64:128], 16)
-                                    effective_at = int(raw_data[128:192], 16)
-                                    if new_value > 0 and effective_at <= block_time:
-                                        active.append((effective_at, int(entry.get("blockNumber", "0x0"), 16), new_value))
-                                if not active:
-                                    raise RuntimeError("No active UIMultiplierUpdated event found on-chain")
-                                multiplier_raw = sorted(active)[-1][2]
-                            if multiplier_raw <= 0:
-                                raise RuntimeError("Invalid on-chain UI multiplier")
-                            multiplier = Decimal(multiplier_raw) / Decimal(10**18)
-                            display_mode = "multiplier"
-                if display_mode == "balanceOfUI":
-                    ui_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": balance_ui_selector + address.lower().replace("0x", "").rjust(64, "0")}, block_tag]), 16)
-                    result[address.lower()] = str(Decimal(ui_raw) / Decimal(10**decimals))
-                elif display_mode == "toUIAmount":
-                    ui_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": to_ui_selector + format(raw, "064x")}, block_tag]), 16)
-                    result[address.lower()] = str(Decimal(ui_raw) / Decimal(10**decimals))
-                else:
-                    result[address.lower()] = str(raw_amount * multiplier)
-            logging.info("BSC direct balances verified at block %s; UI multiplier=%s; decimals=%s; RPC=%s", block_number, multiplier, decimals, rpc_url)
-            return result, {"source": "BSC RPC " + str(display_mode), "block_number": block_number, "ui_multiplier": str(multiplier) if multiplier is not None else "contract-converted", "display_mode": display_mode, "decimals": decimals}
-        except Exception as exc:
-            errors.append(f"{rpc_url} [{stage}]: {exc}")
-            logging.warning("BSC RPC failed at %s: %s", stage, exc)
-    raise RuntimeError("Could not verify LAB balances directly on BSC; refusing stale CMC balances. " + " | ".join(errors))
 
 
 def fetch_holders():
@@ -216,20 +125,12 @@ def fetch_holders():
             continue
         seen.add(address)
         holders.append({"address": address, "balance": str(balance)})
+    holders.sort(key=lambda item: Decimal(item["balance"]), reverse=True)
     if len(holders) < TOP_HOLDERS_COUNT:
         raise ValueError(
             f"فقط {len(holders)} کیف پول معتبر دریافت شد؛ "
             f"برای گزارش {TOP_HOLDERS_COUNT} هولدر کافی نیست"
         )
-    # CMC supplies candidate addresses only. Never trust its cached balances:
-    # replace every balance with a same-block BSC contract read and UI multiplier.
-    onchain, chain_meta = fetch_onchain_balances([item["address"] for item in holders])
-    for item in holders:
-        item["balance"] = onchain[item["address"]]
-    holders.sort(key=lambda item: Decimal(item["balance"]), reverse=True)
-    global LAST_CHAIN_META
-    LAST_CHAIN_META = chain_meta
-    logging.info("Using live BSC balances for %s CMC candidate addresses", len(holders))
     return holders[:TOP_HOLDERS_COUNT]
 
 
@@ -472,7 +373,7 @@ def create_graphic(changes):
 
     draw.line((75, height - 160, width - 75, height - 160), fill="#2A3B52", width=2)
     rtl_text(draw, (width - 90, height - 112), "تغییر موجودی به‌تنهایی به معنی خرید یا فروش نیست", get_font(24), "#A9BED8")
-    draw.text((90, height - 112), "منبع داده: BNB Chain RPC", font=get_font(18), fill="#7189A5", anchor="ls")
+    draw.text((90, height - 112), "منبع داده: CoinMarketCap", font=get_font(18), fill="#7189A5", anchor="ls")
     draw.text((90, height - 58), "BSC  •  LAB", font=get_font(23, True), fill="#29E69A", anchor="ls")
     rtl_text(draw, (width - 90, height - 58), "گروه تلگرامی @lab_chats", get_font(23), "#DCE8F7")
     image.save(OUTPUT_FILE, "JPEG", quality=94, optimize=True)
@@ -487,7 +388,6 @@ def send_to_telegram(image_path, changes, futures_pairs=None):
         "<b>🐳 دیده‌بان نهنگ‌های LAB</b>\n"
         f"📅 {date_text} | 🕒 {time_text} (ایران)\n"
         f"🔎 تعداد تغییرات شناسایی‌شده: <b>{len(changes)}</b>\n"
-        f"⛓ بلاک BSC: <b>{LAST_CHAIN_META.get('block_number', 'نامشخص')}</b> | ضریب نمایش: <b>{LAST_CHAIN_META.get('ui_multiplier', 'نامشخص')}</b>\n"
         "ℹ️ تغییر موجودی الزاماً به معنی خرید یا فروش نیست.\n"
         + futures_caption(futures_pairs) + "\n"
         "👥 @lab_chats"
@@ -584,7 +484,7 @@ def create_status_graphic(holders, previous=None, first_run=False):
         y += 121
     draw.line((75, 1585, width - 75, 1585), fill="#2A3D55", width=2)
     rtl_text(draw, (width - 90, 1630), "تغییر موجودی الزاماً به معنی خرید یا فروش نیست", get_font(24), "#A9BED8")
-    draw.text((90, 1630), "منبع: BNB Chain RPC | LAB • UI-adjusted", font=get_font(18), fill="#7189A5", anchor="ls")
+    draw.text((90, 1630), "منبع: CoinMarketCap | BSC • LAB", font=get_font(18), fill="#7189A5", anchor="ls")
     image.save(STATUS_OUTPUT_FILE, "JPEG", quality=95, optimize=True)
     return STATUS_OUTPUT_FILE
 
@@ -623,7 +523,6 @@ def save_state(holders, status_message_id, pending_delete_message_ids=None):
         "status_message_id": status_message_id,
         "pending_delete_message_ids": list(pending_delete_message_ids or []),
         "updated_at": datetime.now(ZoneInfo("UTC")).isoformat(),
-        "chain_meta": LAST_CHAIN_META,
     }
     STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
