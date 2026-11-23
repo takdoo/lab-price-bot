@@ -1,0 +1,61 @@
+name: LAB LBank Holdings Watcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lab-lbank-holdings
+  cancel-in-progress: false
+
+jobs:
+  publish-lbank-holdings:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout independent LBank watcher
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Load independent Telegram message state
+        run: |
+          git fetch origin refs/heads/lab-lbank-state:refs/remotes/origin/lab-lbank-state
+          mkdir -p .lbank-state
+          git show origin/lab-lbank-state:message_id.txt > .lbank-state/message_id.txt
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install isolated dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt beautifulsoup4
+
+      - name: Validate and publish LBank holdings
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: "@labcoinss"
+          LBANK_STATE_FILE: ".lbank-state/message_id.txt"
+        run: |
+          python -m py_compile lbank_holdings_watcher.py
+          python lbank_holdings_watcher.py
+
+      - name: Save independent message state
+        if: success()
+        run: |
+          git worktree add /tmp/lab-lbank-state origin/lab-lbank-state
+          cp .lbank-state/message_id.txt /tmp/lab-lbank-state/message_id.txt
+          git -C /tmp/lab-lbank-state config user.name "github-actions[bot]"
+          git -C /tmp/lab-lbank-state config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C /tmp/lab-lbank-state add message_id.txt
+          if ! git -C /tmp/lab-lbank-state diff --cached --quiet; then
+            git -C /tmp/lab-lbank-state commit -m "Update LBank holdings report message ID"
+            git -C /tmp/lab-lbank-state push origin HEAD:lab-lbank-state
+          fi
