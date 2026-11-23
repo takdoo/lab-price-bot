@@ -77,21 +77,45 @@ def fetch_onchain_balances(addresses):
             block_tag = hex(block_number)
             stage = "decimals"
             decimals = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": "0x313ce567"}, block_tag]), 16)
-            stage = "uiMultiplier"
             multiplier_selector = "0x" + keccak(b"uiMultiplier()")[:4].hex()
-            multiplier_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": multiplier_selector}, block_tag]), 16)
-            if multiplier_raw <= 0 or decimals < 0 or decimals > 36:
-                raise RuntimeError("Invalid on-chain multiplier/decimals")
-            multiplier = Decimal(multiplier_raw) / Decimal(10**18)
+            to_ui_selector = "0x" + keccak(b"toUIAmount(uint256)")[:4].hex()
+            balance_ui_selector = "0x" + keccak(b"balanceOfUI(address)")[:4].hex()
             result = {}
+            display_mode = None
+            multiplier = None
             for address in addresses:
                 stage = "balanceOf:" + address
                 selector = "0x70a08231" + address.lower().replace("0x", "").rjust(64, "0")
                 raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": selector}, block_tag]), 16)
                 raw_amount = Decimal(raw) / Decimal(10**decimals)
-                result[address.lower()] = str(raw_amount * multiplier)
+                if display_mode is None:
+                    stage = "balanceOfUI probe"
+                    try:
+                        balance_data = balance_ui_selector + address.lower().replace("0x", "").rjust(64, "0")
+                        _rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": balance_data}, block_tag])
+                        display_mode = "balanceOfUI"
+                    except Exception:
+                        stage = "toUIAmount probe"
+                        try:
+                            _rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": to_ui_selector + format(raw, "064x")}, block_tag])
+                            display_mode = "toUIAmount"
+                        except Exception:
+                            stage = "uiMultiplier probe"
+                            multiplier_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": multiplier_selector}, block_tag]), 16)
+                            if multiplier_raw <= 0:
+                                raise RuntimeError("Invalid on-chain UI multiplier")
+                            multiplier = Decimal(multiplier_raw) / Decimal(10**18)
+                            display_mode = "multiplier"
+                if display_mode == "balanceOfUI":
+                    ui_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": balance_ui_selector + address.lower().replace("0x", "").rjust(64, "0")}, block_tag]), 16)
+                    result[address.lower()] = str(Decimal(ui_raw) / Decimal(10**decimals))
+                elif display_mode == "toUIAmount":
+                    ui_raw = int(_rpc_call(rpc_url, "eth_call", [{"to": CONTRACT, "data": to_ui_selector + format(raw, "064x")}, block_tag]), 16)
+                    result[address.lower()] = str(Decimal(ui_raw) / Decimal(10**decimals))
+                else:
+                    result[address.lower()] = str(raw_amount * multiplier)
             logging.info("BSC direct balances verified at block %s; UI multiplier=%s; decimals=%s; RPC=%s", block_number, multiplier, decimals, rpc_url)
-            return result, {"source": "BSC RPC balanceOf × uiMultiplier", "block_number": block_number, "ui_multiplier": str(multiplier), "decimals": decimals}
+            return result, {"source": "BSC RPC " + str(display_mode), "block_number": block_number, "ui_multiplier": str(multiplier) if multiplier is not None else "contract-converted", "display_mode": display_mode, "decimals": decimals}
         except Exception as exc:
             errors.append(f"{rpc_url} [{stage}]: {exc}")
             logging.warning("BSC RPC failed at %s: %s", stage, exc)
