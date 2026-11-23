@@ -64,9 +64,9 @@ def parse_rows(html):
         raise RuntimeError("LBank holdings section is missing from the returned page")
     section = text.split(marker, 1)[1]
     pattern = re.compile(
-        r"(?:\\d+\\s+)?(0x[a-f0-9]{4}\\.\\.\\.[a-f0-9]{4,})\\s+"
-        r"([\\d,.]+\\s*[KMB]?)\\s+([\\d.]+%)\\s+"
-        r"([-+−]?[\\d,.]+\\s*[KMB]?)\\s+([-+−]?[\\d,.]+\\s*[KMB]?)",
+        r"(?:[0-9]+[ ]+)?(0x[a-f0-9]{4}[.]{3}[a-f0-9]{4,})[ ]+"
+        r"([0-9,.]+[ ]*[KMB]?)[ ]+([0-9.]+%)[ ]+"
+        r"([-+−]?[0-9,.]+[ ]*[KMB]?)[ ]+([-+−]?[0-9,.]+[ ]*[KMB]?)",
         re.I,
     )
     for match in pattern.finditer(section):
