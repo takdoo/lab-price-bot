@@ -39,6 +39,12 @@ jobs:
           cache: "pip"
           cache-dependency-path: requirements.txt
 
+      - name: Install Persian typography fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core fonts-noto-extra
+          fc-cache -f
+
       - name: Install isolated dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt beautifulsoup4
 
