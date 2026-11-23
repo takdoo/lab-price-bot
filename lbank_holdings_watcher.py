@@ -184,7 +184,7 @@ def read_id():
 
 def write_id(value):
     STATE_FILE.parent.mkdir(parents=True,exist_ok=True)
-    STATE_FILE.write_text(str(value)+"\\n",encoding="utf-8")
+    STATE_FILE.write_text(str(value) + "\n", encoding="utf-8")
 
 
 def telegram(method,payload):
