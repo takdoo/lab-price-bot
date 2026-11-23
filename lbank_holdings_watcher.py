@@ -177,7 +177,8 @@ def make_image(rows):
 
 def read_id():
     try:
-        return int(STATE_FILE.read_text().strip() or "0")
+        raw = STATE_FILE.read_text().strip().replace("\\n", "").strip()
+        return int(raw or "0")
     except FileNotFoundError:
         return 0
 
