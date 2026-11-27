@@ -46,12 +46,12 @@ class UsdTomanWatcherTests(unittest.TestCase):
         self.assertIn("زمان ارسال (ایران)", report)
 
     def test_publish_sends_new_before_deleting_previous(self):
-        with patch.object(usd, "BOT_TOKEN", "token"), \\
-             patch.object(usd, "CHAT_ID", "@labcoinss"), \\
-             patch.object(usd, "load_message_id", return_value=111), \\
-             patch.object(usd, "telegram_call", side_effect=[{"message_id": 222}, {}]) as telegram, \\
-             patch.object(usd, "save_message_id") as save:
-            self.assertEqual(usd.publish_report("test"), 222)
+        with patch.object(usd, "BOT_TOKEN", "token"):
+            with patch.object(usd, "CHAT_ID", "@labcoinss"):
+                with patch.object(usd, "load_message_id", return_value=111):
+                    with patch.object(usd, "telegram_call", side_effect=[{"message_id": 222}, {}]) as telegram:
+                        with patch.object(usd, "save_message_id") as save:
+                            self.assertEqual(usd.publish_report("test"), 222)
         self.assertEqual(telegram.call_args_list[0].args[0], "sendMessage")
         self.assertEqual(telegram.call_args_list[1].args[0], "deleteMessage")
         save.assert_called_once_with(222)
