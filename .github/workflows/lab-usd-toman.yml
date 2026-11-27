@@ -34,7 +34,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install requirements
-        run: python -m pip install --disable-pip-version-check requests
+        run: python -m pip install --disable-pip-version-check requests 'jdatetime>=5,<6'
 
       - name: Validate configuration
         env:
