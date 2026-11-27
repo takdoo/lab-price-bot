@@ -42,8 +42,9 @@ class UsdTomanWatcherTests(unittest.TestCase):
         report = usd.build_report(rate)
         self.assertIn("۲۶۵٬۰۰۰ تومان", report)
         self.assertIn("NerkhAra", report)
-        self.assertIn("زمان آخرین به‌روزرسانی منبع", report)
-        self.assertIn("زمان ارسال (ایران)", report)
+        self.assertIn("تاریخ و ساعت به‌روزرسانی نرخ", report)
+        self.assertIn("تاریخ و ساعت ارسال", report)
+        self.assertIn("شمسی، ایران", report)
 
     def test_publish_sends_new_before_deleting_previous(self):
         with patch.object(usd, "BOT_TOKEN", "token"):
