@@ -6,6 +6,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
+import jdatetime
 
 API_URL = "https://nerkhara.com/api/v1/latest/usd.json"
 API_SITE = "https://nerkhara.com/"
@@ -77,6 +78,23 @@ def format_toman(value):
     return f"{value:,.0f}".translate(str.maketrans("0123456789,", "۰۱۲۳۴۵۶۷۸۹٬"))
 
 
+def jalali_datetime(value):
+    """Convert a datetime to Persian calendar date/time in Iran timezone."""
+    iran_value = value.astimezone(ZoneInfo("Asia/Tehran"))
+    return jdatetime.datetime.fromgregorian(datetime=iran_value).strftime("%Y/%m/%d - %H:%M:%S")
+
+
+def format_source_update(value):
+    """Convert ISO timestamps from the quote provider to Iran's Jalali clock."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return jalali_datetime(parsed)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def build_report(rate, now=None):
     now = now or datetime.now(timezone.utc)
     iran_now = now.astimezone(ZoneInfo("Asia/Tehran"))
@@ -96,8 +114,8 @@ def build_report(rate, now=None):
         "💵 <b>نرخ دلار آزاد به تومان</b>\n"
         f"🇺🇸 هر ۱ دلار: <b>{price} تومان</b>"
         + change_line
-        + f"\n🕒 زمان آخرین به‌روزرسانی منبع: {rate['updated']}"
-        + f"\n⏱ زمان ارسال (ایران): {iran_now.strftime('%Y/%m/%d - %H:%M:%S')}"
+        + f"\n🕒 تاریخ و ساعت به‌روزرسانی نرخ: {format_source_update(rate['updated'])} (ایران)"
+        + f"\n⏱ تاریخ و ساعت ارسال: {jalali_datetime(iran_now)} (شمسی، ایران)"
         + source_line
         + freshness
         + f"\n🌐 منبع: <a href=\"{API_SITE}\">NerkhAra</a>"
